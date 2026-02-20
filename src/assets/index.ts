@@ -1,0 +1,1 @@
+export { default as GooglePlay } from "./brand-logos/google-play-png-logo-3799.png";
