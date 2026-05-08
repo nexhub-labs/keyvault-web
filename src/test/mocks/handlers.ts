@@ -37,8 +37,10 @@ export const handlers = [
         if (!chars) chars = 'abcdefghijklmnopqrstuvwxyz'; // Fallback
 
         let password = '';
+        const array = new Uint32Array(length);
+        window.crypto.getRandomValues(array);
         for (let i = 0; i < length; i++) {
-            password += chars.charAt(Math.floor(Math.random() * chars.length));
+            password += chars.charAt(array[i] % chars.length);
         }
 
         return HttpResponse.json({ password });
@@ -52,8 +54,8 @@ export const handlers = [
         });
     }),
 
-    // POST /keyvault/retrieve - Retrieve encrypted password
-    http.post(`${baseUrl}/keyvault/retrieve`, async () => {
+    // GET /keyvault/secrets/:keyName - Retrieve encrypted password
+    http.get(`${baseUrl}/keyvault/secrets/:keyName`, async () => {
         // Return mock encrypted data
         return HttpResponse.json({
             encryptedData: 'bW9ja0VuY3J5cHRlZERhdGE=', // base64 "mockEncryptedData"
@@ -62,8 +64,8 @@ export const handlers = [
         });
     }),
 
-    // POST /keyvault/viewDB - View all vault items
-    http.post(`${baseUrl}/keyvault/viewDB`, () => {
+    // GET /keyvault/secrets - View all vault items
+    http.get(`${baseUrl}/keyvault/secrets`, () => {
         return HttpResponse.json([
             {
                 _id: '1',

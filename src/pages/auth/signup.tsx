@@ -19,7 +19,9 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { signupSchema } from '../../schemas/signupSchema';
 import * as yup from 'yup';
 import { useState } from 'react';
-import { Center, Spinner as LoadSpinner } from '@chakra-ui/react';
+import { Center } from '@chakra-ui/react';
+import { LoadSpinner } from '../../components/ui/LoadSpinner';
+
 import { useAuth } from '../../hooks/useAuth';
 import { LuSquareCheck, LuX } from 'react-icons/lu';
 import { PasswordInput } from '../../components/ui/password-input';
@@ -66,12 +68,9 @@ const SignupPage = () => {
 
     // Show loading spinner while checking session
     if (isCheckingSession) {
-        return (
-            <Center height="100vh" bg="black">
-                <LoadSpinner size="xl" color="white" />
-            </Center>
-        );
+        return <LoadSpinner message="Verifying session..." />;
     }
+
 
     const onSubmit = async (data: SignupFormData) => {
         setLoading('isSubmitting', true);

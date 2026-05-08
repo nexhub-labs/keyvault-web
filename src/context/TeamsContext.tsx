@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import axiosInstance from '../utils/axiosInstance';
 import { toaster } from '../components/ui/toaster';
 import { useAuth } from '../hooks/useAuth';
-// import { logger } from '../utils/logger';
+import { logger } from '../utils/logger';
 
 export interface Team {
     _id: string;
@@ -38,8 +38,7 @@ export const TeamsProvider = ({ children }: { children: ReactNode }) => {
             const { data } = await axiosInstance.get('/teams/my-teams');
             setTeams(data);
         } catch (error) {
-            // logger.error('Failed to fetch teams', error);
-            toaster.create({ title: 'Failed to fetch teams', type: 'error' });
+            logger.error('Failed to fetch teams', error);
         } finally {
             setIsLoading(false);
             setHasFetched(true);

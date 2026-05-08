@@ -1,4 +1,4 @@
-import { Box, HStack, Text } from '@chakra-ui/react';
+import { HStack, Text } from '@chakra-ui/react';
 import { useLocation, Link } from 'react-router';
 import { LuChevronRight } from 'react-icons/lu';
 

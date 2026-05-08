@@ -1,6 +1,5 @@
-import { Container, VStack, Heading, Text, Box, Tabs, Input, Button, Flex, Badge, HStack, Separator, Spinner, useDisclosure } from "@chakra-ui/react";
+import { Container, VStack, Heading, Text, Box, Tabs, Input, Button, Flex, Badge, HStack, Separator, Spinner, useDisclosure, SimpleGrid } from "@chakra-ui/react";
 import { Link } from "react-router";
-import SpotlightCard from "../../components/SpotlightCard/SpotlightCard";
 import { LuUser, LuLock, LuUsers, LuKey, LuCheck, LuTriangle, LuPlus, LuLockOpen, LuCreditCard } from "react-icons/lu";
 import Billing from "./Billing";
 import { useEffect, useState } from "react";
@@ -41,9 +40,6 @@ const Settings = () => {
 
     const surfaceBg = useColorModeValue("white", "bg.surface");
     const borderSubtle = useColorModeValue("gray.200", "border.subtle");
-    const shadowMode = useColorModeValue("lg", "none");
-    const accountSpotlight = useColorModeValue("rgba(64, 121, 255, 0.05)", "rgba(64, 121, 255, 0.05)");
-    const securitySpotlight = useColorModeValue("rgba(74, 222, 128, 0.05)", "rgba(74, 222, 128, 0.05)");
 
     // Fetch pricing limits on auth change
     // Recovery Management State
@@ -278,27 +274,26 @@ const Settings = () => {
                     </Box>
 
                     <Tabs.Root value={activeTab} onValueChange={(details) => setActiveTab(details.value)} variant="plain" colorPalette="brand">
-                        <Tabs.List bg="bg.surface" p={1} rounded="2xl" border="1px solid" borderColor="border.subtle" mb={8} overflowX="auto" whiteSpace="nowrap" css={{ '&::-webkit-scrollbar': { display: 'none' }, msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-                            <Tabs.Trigger value="account" flex={{ base: "none", md: "1" }} px={{ base: 6, md: 0 }} rounded="xl" _selected={{ bg: "bg.subtle", color: "fg.primary" }} color="fg.muted">
+                        <Tabs.List bg="bg.surface" w="full" display="flex" p={1} rounded="2xl" border="1px solid" borderColor="border.subtle" mb={8} overflowX="auto" whiteSpace="nowrap" css={{ '&::-webkit-scrollbar': { display: 'none' }, msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+                            <Tabs.Trigger value="account" flex={1} display="flex" justifyContent="center" gap={2} px={4} py={2} rounded="xl" _selected={{ bg: "bg.subtle", color: "fg.primary", shadow: "sm" }} color="fg.muted">
                                 <LuUser /> Account
                             </Tabs.Trigger>
-                            <Tabs.Trigger value="security" flex={{ base: "none", md: "1" }} px={{ base: 6, md: 0 }} rounded="xl" _selected={{ bg: "bg.subtle", color: "fg.primary" }} color="fg.muted">
+                            <Tabs.Trigger value="security" flex={1} display="flex" justifyContent="center" gap={2} px={4} py={2} rounded="xl" _selected={{ bg: "bg.subtle", color: "fg.primary", shadow: "sm" }} color="fg.muted">
                                 <LuLock /> Security
                             </Tabs.Trigger>
-                            <Tabs.Trigger value="billing" flex={{ base: "none", md: "1" }} px={{ base: 6, md: 0 }} rounded="xl" _selected={{ bg: "bg.subtle", color: "fg.primary" }} color="fg.muted">
+                            <Tabs.Trigger value="billing" flex={1} display="flex" justifyContent="center" gap={2} px={4} py={2} rounded="xl" _selected={{ bg: "bg.subtle", color: "fg.primary", shadow: "sm" }} color="fg.muted">
                                 <LuCreditCard /> Billing
                             </Tabs.Trigger>
                         </Tabs.List>
 
                         <Tabs.Content value="account">
-                            <SpotlightCard
-                                className="rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-8"
+                            <Box
+                                rounded={{ base: "2xl", md: "3xl" }}
+                                p={{ base: 6, md: 8 }}
                                 w="full"
                                 bg={surfaceBg}
                                 border="1px solid"
                                 borderColor={borderSubtle}
-                                shadow={shadowMode}
-                                spotlightColor={accountSpotlight}
                             >
                                 <VStack align="stretch" spaceY={6}>
                                     <Heading size="md" color="fg.primary" fontWeight="bold">Profile Information</Heading>
@@ -338,24 +333,23 @@ const Settings = () => {
                                         </Button>
                                     </form>
                                 </VStack>
-                            </SpotlightCard>
+                            </Box>
                         </Tabs.Content>
 
                         <Tabs.Content value="security">
-                            <SpotlightCard
-                                className="rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-8"
+                            <Box
+                                rounded={{ base: "2xl", md: "3xl" }}
+                                p={{ base: 6, md: 8 }}
                                 w="full"
                                 bg={surfaceBg}
                                 border="1px solid"
                                 borderColor={borderSubtle}
-                                shadow={shadowMode}
-                                spotlightColor={securitySpotlight}
                             >
                                 <VStack align="stretch" spaceY={6}>
                                     <Heading size="md" color="fg.primary" fontWeight="bold">Vault Access Status</Heading>
 
                                     <Box rounded="xl" bg={isUnlocked ? "green.500/10" : "orange.500/10"} p={{ base: 4, md: 5 }} border="1px solid" borderColor={isUnlocked ? "green.500/20" : "orange.500/20"}>
-                                        <HStack align="start" gap={{ base: 3, md: 4 }} direction={{ base: "column", sm: "row" }}>
+                                        <Flex align={{ base: "start", md: "center" }} gap={{ base: 3, md: 4 }} direction={{ base: "column", md: "row" }}>
                                             <Box
                                                 p={2}
                                                 rounded="full"
@@ -375,13 +369,15 @@ const Settings = () => {
                                                 </Text>
                                             </VStack>
                                             {!isUnlocked && (
-                                                <Link to="/unlock-vault" style={{ width: "100%" }}>
-                                                    <Button size="sm" colorPalette="blue" variant="solid" w={{ base: "full", sm: "auto" }}>
-                                                        Unlock Now
-                                                    </Button>
-                                                </Link>
+                                                <Box w={{ base: "full", md: "auto" }} mt={{ base: 2, md: 0 }}>
+                                                    <Link to="/unlock-vault" style={{ display: "block" }}>
+                                                        <Button size="sm" colorPalette="blue" variant="solid" w={{ base: "full", md: "auto" }}>
+                                                            Unlock Now
+                                                        </Button>
+                                                    </Link>
+                                                </Box>
                                             )}
-                                        </HStack>
+                                        </Flex>
                                     </Box>
 
                                     <Box>
@@ -403,14 +399,14 @@ const Settings = () => {
                                             <Spinner color="green.400" />
                                         </Flex>
                                     ) : (
-                                        <VStack align="stretch" spaceY={4}>
+                                        <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
                                             {/* Master Password Status */}
-                                            <SpotlightCard
-                                                className="rounded-2xl p-4"
+                                            <Box
+                                                rounded="2xl"
+                                                p={4}
                                                 bg="bg.subtle"
                                                 border="1px solid"
                                                 borderColor={borderSubtle}
-                                                shadow="sm"
                                             >
                                                 <HStack justify="space-between">
                                                     <VStack align="start" spaceY={1}>
@@ -445,15 +441,15 @@ const Settings = () => {
                                                         </Link>
                                                     )}
                                                 </HStack>
-                                            </SpotlightCard>
+                                            </Box>
 
                                             {/* Trusted Contacts Status */}
-                                            <SpotlightCard
-                                                className="rounded-2xl p-4"
+                                            <Box
+                                                rounded="2xl"
+                                                p={4}
                                                 bg="bg.subtle"
                                                 border="1px solid"
                                                 borderColor={borderSubtle}
-                                                shadow="sm"
                                             >
                                                 <HStack justify="space-between" align="start">
                                                     <VStack align="start" spaceY={1} flex={1}>
@@ -478,16 +474,16 @@ const Settings = () => {
                                                         <LuUsers /> {contactsSetup ? "Manage" : "Setup"}
                                                     </Button>
                                                 </HStack>
-                                            </SpotlightCard>
+                                            </Box>
 
                                             {/* Recovery Request Status */}
                                             {recoveryRequestStatus !== 'none' && (
-                                                <SpotlightCard
-                                                    className="rounded-2xl p-4"
+                                                <Box
+                                                    rounded="2xl"
+                                                    p={4}
                                                     bg="bg.subtle"
                                                     border="1px solid"
                                                     borderColor={borderSubtle}
-                                                    shadow="sm"
                                                 >
                                                     <VStack align="start" spaceY={1}>
                                                         <HStack spaceY={2}>
@@ -519,16 +515,16 @@ const Settings = () => {
                                                             </Text>
                                                         )}
                                                     </VStack>
-                                                </SpotlightCard>
+                                                </Box>
                                             )}
 
                                             {/* Recovery Key Status */}
-                                            <SpotlightCard
-                                                className="rounded-2xl p-4"
+                                            <Box
+                                                rounded="2xl"
+                                                p={4}
                                                 bg="bg.subtle"
                                                 border="1px solid"
                                                 borderColor={borderSubtle}
-                                                shadow="sm"
                                             >
                                                 <HStack justify="space-between">
                                                     <VStack align="start" spaceY={1}>
@@ -550,11 +546,11 @@ const Settings = () => {
                                                         </Text>
                                                     </VStack>
                                                 </HStack>
-                                            </SpotlightCard>
-                                        </VStack>
+                                            </Box>
+                                        </SimpleGrid>
                                     )}
                                 </VStack>
-                            </SpotlightCard>
+                            </Box>
                         </Tabs.Content>
 
                         <Tabs.Content value="billing">

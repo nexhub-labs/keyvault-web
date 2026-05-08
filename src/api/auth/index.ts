@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import axiosInstance from '../../utils/axiosInstance';
-import { keyvaultServerUrl, serverApiKey } from '..';
+import { keyvaultServerUrl } from '..';
 
 interface LocalRegisterData {
   name?: string;
@@ -29,7 +29,6 @@ async function localRegister(data: LocalRegisterData) {
     url: `${keyvaultServerUrl}/users/register`,
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': serverApiKey,
     },
     data: jsonData,
   };

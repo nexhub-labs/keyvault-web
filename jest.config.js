@@ -6,6 +6,9 @@ export default {
     '^@/(.*)$': '<rootDir>/src/$1',
     // Handle CSS imports
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    // Mock files that use import.meta.env to avoid syntax errors in Jest
+    './axiosInstance': '<rootDir>/src/test/mocks/axiosInstanceMock.ts',
+    './supabase': '<rootDir>/src/test/mocks/supabaseMock.ts',
   },
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {
@@ -26,9 +29,6 @@ export default {
   coverageReporters: ['text', 'lcov', 'html'],
   testMatch: [
     '<rootDir>/src/utils/**/*.{test,spec}.{ts,tsx}',
-  ],
-  transformIgnorePatterns: [
-    'node_modules/(?!(secrets.js-grempe)/)',
   ],
   testPathIgnorePatterns: [
     '/node_modules/',

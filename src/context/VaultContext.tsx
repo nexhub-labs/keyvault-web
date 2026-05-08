@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useRef, useCallback } from 'react';
 import { viewVaultDBAPI, VaultItem } from '../api/vault';
 import { logger } from '../utils/logger';
 import { useNetwork } from './NetworkContext';
@@ -20,9 +20,12 @@ interface VaultContextType {
     refreshVault: (filter?: { projectId?: string; teamId?: string; familyId?: string }, force?: boolean) => Promise<void>;
     teamKeys: Record<string, CryptoKey>;
     setTeamKey: (teamId: string, key: CryptoKey) => void;
+    familyKeys: Record<string, CryptoKey>;
+    setFamilyKey: (familyId: string, key: CryptoKey) => void;
     isLoading: boolean;
     refresh: (filter?: { projectId?: string; teamId?: string; familyId?: string } | boolean, force?: boolean) => Promise<void>;
-    saveToVault: (keyName: string, password: string, extra?: { projectId?: string; teamId?: string; familyId?: string; secretType?: string }) => Promise<void>;
+    saveToVault: (keyName: string, password: string, extra?: { projectId?: string; teamId?: string; familyId?: string; secretType?: string; tags?: string[]; folder?: string }) => Promise<void>;
+    copyToClipboard: (text: string, label?: string, isSensitive?: boolean) => void;
 }
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined);
@@ -35,12 +38,18 @@ export const VaultProvider = ({ children }: { children: ReactNode }) => {
     const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
     const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
     const [teamKeys, setTeamKeys] = useState<Record<string, CryptoKey>>({});
+    const [familyKeys, setFamilyKeys] = useState<Record<string, CryptoKey>>({});
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const wasUnreachable = useRef(false);
 
     const lastRefreshTime = useRef<number>(0);
+    const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
+    const clipboardTimer = useRef<NodeJS.Timeout | null>(null);
 
-    const refreshVault = async (filter?: { projectId?: string; teamId?: string; familyId?: string }, force: boolean = false) => {
+    const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+    const CLIPBOARD_TIMEOUT = 30 * 1000; // 30 seconds
+
+    const refreshVault = useCallback(async (filter?: { projectId?: string; teamId?: string; familyId?: string }, force: boolean = false) => {
         const now = Date.now();
         // If not forced (auto-refresh), and last refresh was less than 5 seconds ago, skip to prevent loops
         if (!force && (now - lastRefreshTime.current < 5000)) {
@@ -62,27 +71,41 @@ export const VaultProvider = ({ children }: { children: ReactNode }) => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [isLoading]);
 
-    const refresh = async (arg1?: { projectId?: string; teamId?: string; familyId?: string } | boolean, arg2?: boolean) => {
+    const refresh = useCallback(async (arg1?: { projectId?: string; teamId?: string; familyId?: string } | boolean, arg2?: boolean) => {
         if (typeof arg1 === 'boolean') {
             return refreshVault(undefined, arg1);
         }
         return refreshVault(arg1, arg2);
-    };
+    }, [refreshVault]);
 
     /**
      * Encrypts the password client-side and stores it in the vault.
-     * Uses the Vault Key (EK) from context (or MEK if legacy).
+     * Uses the Vault Key (EK), Team Key, or Family Key based on context.
      */
-    const saveToVault = async (keyName: string, password: string, extra: { projectId?: string; teamId?: string; familyId?: string; secretType?: string } = {}) => {
-        // Prioritize Vault Key (Key Indirection), fallback to MEK (Legacy)
-        const keyToUse = vaultKey || mek;
-        const saltToUse = salt;
+    const saveToVault = async (keyName: string, password: string, extra: { projectId?: string; teamId?: string; familyId?: string; secretType?: string; tags?: string[]; folder?: string } = {}) => {
+        // Prioritize Context Keys (Team/Family) -> Vault Key (Personal) -> MEK (Legacy)
+        let keyToUse: CryptoKey | null = null;
+
+        if (extra.teamId) {
+            keyToUse = teamKeys[extra.teamId] || null;
+            if (!keyToUse) throw new Error(`Access Denied: Missing encryption key for team ${extra.teamId}. Please ensure you are a member and your access is initialized.`);
+        } else if (extra.familyId) {
+            keyToUse = familyKeys[extra.familyId] || null;
+            if (!keyToUse) throw new Error(`Access Denied: Missing encryption key for family ${extra.familyId}. Please ensure you are a member and your access is initialized.`);
+        }
+
+        // Use personal vault key or MEK ONLY if no shared context was provided
+        if (!keyToUse && !extra.teamId && !extra.familyId) {
+            keyToUse = vaultKey || mek;
+        }
 
         if (!keyToUse) {
-            throw new Error("Vault not unlocked");
+            throw new Error("Vault not unlocked or missing context key");
         }
+
+        const saltToUse = salt;
         if (!saltToUse) {
             throw new Error("Vault not initialized");
         }
@@ -90,7 +113,10 @@ export const VaultProvider = ({ children }: { children: ReactNode }) => {
         try {
             const { encryptedData, iv } = await encryptWithKey(password, keyToUse);
             await storePasswordAPI(keyName, encryptedData, iv, "AES-GCM", extra);
-            refresh(undefined, true); // Refresh list via Context (Forced)
+
+            // Auto-refresh the current view
+            const filter = extra.teamId ? { teamId: extra.teamId } : (extra.familyId ? { familyId: extra.familyId } : undefined);
+            refresh(filter, true);
         } catch (error) {
             logger.error("Failed to save to vault", error);
             throw error;
@@ -113,11 +139,77 @@ export const VaultProvider = ({ children }: { children: ReactNode }) => {
         setIsUnlocked(false);
         setVaultItems([]);
         setTeamKeys({});
+        setFamilyKeys({});
         setIsLoading(false);
+        if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+        if (clipboardTimer.current) clearTimeout(clipboardTimer.current);
     };
 
+    const resetInactivityTimer = () => {
+        if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+        if (isUnlocked) {
+            inactivityTimer.current = setTimeout(() => {
+                logger.warn("Vault locked due to inactivity");
+                clearSession();
+            }, INACTIVITY_TIMEOUT);
+        }
+    };
+
+    const copyToClipboard = (text: string, label: string = "Item", isSensitive: boolean = true) => {
+        try {
+            navigator.clipboard.writeText(text).then(() => {
+                import('../components/ui/toaster').then(({ toaster }) => {
+                    toaster.create({ title: `${label} copied to clipboard`, type: "success" });
+                });
+            }).catch(err => {
+                logger.warn(`Clipboard write failed for ${label}:`, err);
+            });
+
+            if (isSensitive) {
+                if (clipboardTimer.current) clearTimeout(clipboardTimer.current);
+                clipboardTimer.current = setTimeout(() => {
+                    try {
+                        // Security Guard: Browser blocks clipboard access if document is not focused.
+                        // We try-catch to prevent application crash on tab switch or permission denial.
+                        if (document.hasFocus()) {
+                            // Blindly clear for security - we don't read to avoid extra permission prompts
+                            navigator.clipboard.writeText("").then(() => {
+                                logger.info(`Clipboard auto-cleared for sensitive ${label}`);
+                            }).catch(() => {
+                                // Silent fail for auto-clear
+                            });
+                        }
+                    } catch (e) {
+                        // Ignore clear errors
+                    }
+                }, CLIPBOARD_TIMEOUT);
+            }
+        } catch (error) {
+            logger.warn(`Clipboard access denied for ${label}:`, error);
+        }
+    };
+
+    // Tracking activity for auto-lock
+    useEffect(() => {
+        const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+        const handleActivity = () => resetInactivityTimer();
+
+        if (isUnlocked) {
+            events.forEach(event => window.addEventListener(event, handleActivity));
+            resetInactivityTimer();
+        }
+
+        return () => {
+            events.forEach(event => window.removeEventListener(event, handleActivity));
+            if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+        };
+    }, [isUnlocked]);
     const setTeamKey = (teamId: string, key: CryptoKey) => {
         setTeamKeys(prev => ({ ...prev, [teamId]: key }));
+    };
+
+    const setFamilyKey = (familyId: string, key: CryptoKey) => {
+        setFamilyKeys(prev => ({ ...prev, [familyId]: key }));
     };
 
     // Update isUnlocked whenever mek changes
@@ -141,9 +233,12 @@ export const VaultProvider = ({ children }: { children: ReactNode }) => {
             refreshVault,
             teamKeys,
             setTeamKey,
+            familyKeys,
+            setFamilyKey,
             isLoading,
             refresh,
-            saveToVault
+            saveToVault,
+            copyToClipboard
         }}>
             {children}
         </VaultContext.Provider>

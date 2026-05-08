@@ -22,13 +22,15 @@ import {
     LuLogOut,
     LuSettings,
     LuKeyRound,
-    LuGithub
+    LuGithub,
+    LuComponent,
 } from "react-icons/lu";
 // import { useColorMode, useColorModeValue } from "./ui/color-mode";
 import { Link, useNavigate, useLocation } from "react-router";
 import { supabase } from "../utils/supabase";
 import { User } from "@supabase/supabase-js";
 import { useAuth } from "../hooks/useAuth";
+import { useVaultContext } from "../context/VaultContext";
 import {
     MenuContent,
     MenuItem,
@@ -37,66 +39,74 @@ import {
     MenuSeparator,
 } from "./ui/menu";
 import { motion, AnimatePresence } from "motion/react";
+import { AuthButton } from "./ui/AuthButton";
 
 // SignInStatus component now forwards its ref as HTMLDivElement.
 interface SignInStatusProps {
     user: User | null;
 }
 
-const SignInStatus = forwardRef<HTMLDivElement, SignInStatusProps>(({ user }) => {
+const SignInStatus = forwardRef<HTMLDivElement, SignInStatusProps>(({ user }, ref) => {
     const navigate = useNavigate();
 
+    const { clearSession } = useVaultContext();
+
     const logout = async () => {
+        clearSession();
         await supabase.auth.signOut();
         navigate('/');
     };
 
     if (user) {
         return (
-            <MenuRoot positioning={{ placement: "bottom-end" }}>
-                <MenuTrigger asChild>
-                    <Button variant="ghost" size="sm" rounded="full" px={0} _hover={{ bg: "transparent" }}>
-                        <Avatar.Root size="sm" variant="solid" colorPalette="blue">
-                            <Avatar.Image src={user.user_metadata?.avatar_url} />
-                            <Avatar.Fallback children={user.user_metadata?.full_name?.[0] || user.email?.[0] || 'U'} />
-                        </Avatar.Root>
-                    </Button>
-                </MenuTrigger>
-                <MenuContent portalled={false} fontSize={"sm"} minW="220px" rounded="2xl" shadow="2xl" border="1px solid" borderColor="border.subtle" bg="bg.subtle" p={2}>
-                    <Box px={4} py={3}>
-                        <Text fontWeight="black" color="fg.primary" letterSpacing="tight" truncate>{user.user_metadata?.full_name}</Text>
-                        <Text fontSize="xs" color="fg.muted" fontWeight="medium" truncate>{user.email}</Text>
-                    </Box>
-                    <MenuSeparator />
-                    <Link to="/dashboard">
-                        <MenuItem value="dashboard" cursor="pointer" gap={2}>
-                            <LuUser /> Dashboard
+            <Box ref={ref}>
+                <MenuRoot positioning={{ placement: "bottom-end" }}>
+                    <MenuTrigger asChild>
+                        <Button variant="ghost" size="sm" rounded="full" px={0} _hover={{ bg: "transparent" }}>
+                            <Avatar.Root size="sm" variant="solid" colorPalette="blue">
+                                <Avatar.Image src={user.user_metadata?.avatar_url} />
+                                <Avatar.Fallback children={user.user_metadata?.full_name?.[0] || user.email?.[0] || 'U'} />
+                            </Avatar.Root>
+                        </Button>
+                    </MenuTrigger>
+                    <MenuContent portalled={false} fontSize={"sm"} minW="220px" rounded="2xl" shadow="2xl" border="1px solid" borderColor="border.subtle" bg="bg.subtle" p={2}>
+                        <Box px={4} py={3}>
+                            <Text fontWeight="black" color="fg.primary" letterSpacing="tight" truncate>{user.user_metadata?.full_name}</Text>
+                            <Text fontSize="xs" color="fg.muted" fontWeight="medium" truncate>{user.email}</Text>
+                        </Box>
+                        <MenuSeparator />
+                        <Link to="/dashboard">
+                            <MenuItem value="dashboard" cursor="pointer" gap={2}>
+                                <LuUser /> Dashboard
+                            </MenuItem>
+                        </Link>
+                        <Link to="/vault">
+                            <MenuItem value="vault" cursor="pointer" gap={2}>
+                                <LuKeyRound /> My Vault
+                            </MenuItem>
+                        </Link>
+                        <Link to="/settings">
+                            <MenuItem value="settings" cursor="pointer" gap={2}>
+                                <LuSettings /> Settings
+                            </MenuItem>
+                        </Link>
+                        <MenuSeparator />
+                        <MenuItem value="logout" color="red.400" onClick={logout} cursor="pointer" gap={2}>
+                            <LuLogOut /> Logout
                         </MenuItem>
-                    </Link>
-                    <Link to="/vault">
-                        <MenuItem value="vault" cursor="pointer" gap={2}>
-                            <LuKeyRound /> My Vault
-                        </MenuItem>
-                    </Link>
-                    <Link to="/settings">
-                        <MenuItem value="settings" cursor="pointer" gap={2}>
-                            <LuSettings /> Settings
-                        </MenuItem>
-                    </Link>
-                    <MenuSeparator />
-                    <MenuItem value="logout" color="red.400" onClick={logout} cursor="pointer" gap={2}>
-                        <LuLogOut /> Logout
-                    </MenuItem>
-                </MenuContent>
-            </MenuRoot>
+                    </MenuContent>
+                </MenuRoot>
+            </Box>
         );
     }
     return (
-        <Link to="/login">
-            <Button variant="solid" size="sm" rounded="full" px={6} bg="fg.primary" color="bg.canvas" _hover={{ bg: "fg.muted" }} fontWeight="bold">
-                Sign In
-            </Button>
-        </Link>
+        <Box ref={ref}>
+            <Link to="/login">
+                <AuthButton variant="primary" size="sm" rounded="full" px={6} fontWeight="bold">
+                    Get Started <LuComponent />
+                </AuthButton>
+            </Link>
+        </Box>
     );
 });
 SignInStatus.displayName = "SignInStatus";
@@ -248,7 +258,6 @@ export const Navbar = () => {
         { label: "Pricing", path: "/pricing" },
         ...(user ? [
             { label: "Teams", path: "/teams" },
-            { label: "Dashboard", path: "/dashboard" }
         ] : []),
     ];
 

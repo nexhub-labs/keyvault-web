@@ -24,13 +24,16 @@ import {
     encryptWithKey
 } from '../utils/crypto';
 import { logger } from '../utils/logger';
-import { verifyMasterPasswordAPI, getMasterPasswordStatusAPI } from '../api/auth';
+import { verifyMasterPasswordAPI, getMasterPasswordStatusAPI, getAuthSaltAPI } from '../api/auth';
+import { supabase } from '../utils/supabase';
 import { retrievePasswordAPI, storePasswordAPI } from '../api/vault';
 import { useVaultContext } from '../context/VaultContext';
 import SpotlightCard from './SpotlightCard/SpotlightCard';
 import GradientText from './GradientText/GradientText';
 import { LuLock, LuShieldCheck, LuFingerprint } from 'react-icons/lu';
 import { BackButton } from './ui/BackButton';
+import { LoadSpinner } from './ui/LoadSpinner';
+
 
 /**
  * VaultUnlock Component
@@ -42,22 +45,38 @@ import { BackButton } from './ui/BackButton';
  */
 const VaultUnlock = () => {
     const navigate = useNavigate();
-    const { setMek, setVaultKey, setSalt, setIsUnlocked } = useVaultContext();
+    const { setMek, setVaultKey, setSalt, setIsUnlocked, isUnlocked } = useVaultContext();
     const [masterPassword, setMasterPassword] = useState('');
     const [totpToken, setTotpToken] = useState('');
     const [requires2FA, setRequires2FA] = useState(false);
     const [loading, setLoading] = useState(false);
     const [masterPasswordSalt, setMasterPasswordSalt] = useState<string | null>(null);
     const [hasPasskeys, setHasPasskeys] = useState(false);
+    const [needs2FASetup, setNeeds2FASetup] = useState(false);
+
 
     // Fetch salt on component mount
     useEffect(() => {
+        // Optimization: If already unlocked (e.g. from state), skip and go home
+        if (isUnlocked) {
+            navigate('/dashboard');
+            return;
+        }
+
         const fetchSalt = async () => {
             try {
                 const status = await getMasterPasswordStatusAPI();
                 if (status.hasMasterSetup && status.masterPasswordSalt) {
                     setMasterPasswordSalt(status.masterPasswordSalt);
                     setHasPasskeys(!!status.hasPasskeys);
+
+                    // Track 2FA status — but do NOT redirect yet.
+                    // Defense-in-depth: user must prove master password knowledge
+                    // before being allowed to set up or modify 2FA.
+                    if (!status.twoFactorEnabled) {
+                        logger.warn('User has master setup but 2FA is disabled. Will redirect after master verification.');
+                        setNeeds2FASetup(true);
+                    }
                 } else {
                     // No master setup, redirect to setup
                     navigate('/setup-master');
@@ -72,7 +91,8 @@ const VaultUnlock = () => {
             }
         };
         fetchSalt();
-    }, [navigate]);
+    }, [navigate, isUnlocked]);
+
 
     const handleUnlock = async (directTotpToken?: string) => {
         // Use directly passed token (from onComplete) or fall back to state
@@ -94,8 +114,15 @@ const VaultUnlock = () => {
 
         setLoading(true);
         try {
-            // 1. Try Argon2 hash first (new method)
-            const mph = await deriveMasterPasswordHash(masterPassword, masterPasswordSalt);
+            // 1. Fetch Auth Salt from Server
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user || !user.email) {
+                throw new Error("Session expired or invalid. Please re-login.");
+            }
+            const { authSalt } = await getAuthSaltAPI(user.email);
+
+            // 2. Derive Argon2 hash using server auth salt
+            const mph = await deriveMasterPasswordHash(masterPassword, authSalt);
 
             // logger.info(`[DEBUG] Argon2 MPH sent: ${mph.slice(0, 16)}...`);
             const response = await verifyMasterPasswordAPI(mph, tokenToUse);
@@ -168,8 +195,13 @@ const VaultUnlock = () => {
                 type: "success",
             });
 
-            // Navigate to dashboard
-            navigate('/dashboard');
+            // Navigate: enforce 2FA setup if needed, otherwise dashboard
+            if (needs2FASetup) {
+                logger.info('Master password verified. Redirecting to mandatory 2FA setup.');
+                navigate('/setup-2fa');
+            } else {
+                navigate('/dashboard');
+            }
         } catch (error) {
             handleUnlockError(error as Error | { response?: { status?: number, data?: { error?: string } }, message?: string });
         } finally {
@@ -207,7 +239,12 @@ const VaultUnlock = () => {
 
             setIsUnlocked(true);
             toaster.create({ title: "Vault unlocked via Hardware", type: "success" });
-            navigate('/dashboard');
+            if (needs2FASetup) {
+                logger.info('Hardware unlock verified. Redirecting to mandatory 2FA setup.');
+                navigate('/setup-2fa');
+            } else {
+                navigate('/dashboard');
+            }
         } catch (error) {
             handleUnlockError(error as Error | { response?: { status?: number, data?: { error?: string } }, message?: string });
         } finally {
@@ -237,23 +274,40 @@ const VaultUnlock = () => {
         setVaultKey(vaultKey);
     };
 
-    const handleUnlockError = (error: Error | { response?: { status?: number, data?: { error?: string } }, message?: string }) => {
+    const handleUnlockError = async (error: Error | { response?: { status?: number, data?: { error?: string } }, message?: string }) => {
         if ('response' in error && error.response?.status === 403 && error.response?.data?.error === 'TwoFactorRequired') {
+            try {
+                const status = await getMasterPasswordStatusAPI();
+                if (!status.twoFactorEnabled) {
+                    toaster.create({ title: "Setup 2FA Required", description: "You must enable 2FA to unlock.", type: "error" });
+                    navigate('/setup-2fa');
+                    return;
+                }
+            } catch (e) {
+                // Ignore and fallback to PIN prompt
+            }
             setRequires2FA(true);
             setLoading(false);
             toaster.create({ title: "2FA Required", description: "Enter your 2FA token to proceed", type: "info" });
             return;
         }
         logger.error('Unlock failed:', error);
+        const err = error as { response?: { data?: { message?: string } } };
         toaster.create({
             title: "Unlock failed",
-            description: error.message || "Could not unlock vault",
+            description: err.response?.data?.message || (error as Error).message || "Could not unlock vault",
             type: "error",
         });
     };
 
+    if (isUnlocked || !masterPasswordSalt) {
+        return <LoadSpinner message="Opening your secure vault..." />;
+    }
+
+
     return (
         <Box minH="100vh" bg="transparent" display="flex" alignItems="center" justifyContent="center" p={4} position="relative" overflow="hidden">
+
 
             {/* Ambient Background Glow */}
             <Box position="absolute" top="0" left="0" w="full" h="full" bg="bg.canvas" opacity={0.8} zIndex={0} />
@@ -319,6 +373,9 @@ const VaultUnlock = () => {
                                             onComplete={(value) => handleUnlock(value)}
                                         />
                                     </Box>
+                                    <Text fontSize="2xs" color="fg.muted" textAlign="center" mt={3} cursor="pointer" onClick={() => navigate('/recovery?mode=2fa')}>
+                                        Lost your device? <Box as="span" color="brand.400" fontWeight="bold">Reset via Recovery Key</Box>
+                                    </Text>
                                 </Box>
                             )}
 

@@ -19,11 +19,12 @@ import {
     GridItem,
     Spinner,
     Progress,
+    NativeSelect,
 } from "@chakra-ui/react";
 import { useColorModeValue } from "../../components/ui/color-mode";
 import { motion, AnimatePresence } from "motion/react";
-import { useState, useEffect } from 'react';
-import { LuCheck, LuRefreshCw, LuTrash2, LuSettings2, LuHistory, LuSearch, LuLock, LuSave, LuCopy, LuLockOpen } from "react-icons/lu";
+import { useState, useEffect, useMemo } from 'react';
+import { LuCheck, LuRefreshCw, LuTrash2, LuSettings2, LuHistory, LuSearch, LuLock, LuSave, LuCopy, LuLockOpen, LuFolder, LuShieldCheck, LuArrowRight } from "react-icons/lu";
 import { BsHeart, BsHeartFill } from "react-icons/bs";
 import { ClipboardRoot } from "../../components/ui/clipboard";
 import DecryptedText from "../../components/DecryptedText/DecryptedText";
@@ -41,18 +42,20 @@ import {
 } from "../../components/ui/dialog";
 import { toaster } from "../../components/ui/toaster";
 import { Slider } from "../../components/ui/slider";
-import { generatePasswordAPI } from "../../api";
+import { generateSecurePassword } from "../../utils/password";
 import { storePasswordAPI } from "../../api/vault";
-import { getPricingLimitsAPI, PricingLimitsResponse } from "../../api/auth";
+import { getMasterPasswordStatusAPI, getPricingLimitsAPI, PricingLimitsResponse } from "../../api/auth";
 import { encryptWithKey } from "../../utils/crypto";
 import { PasswordInput } from "../../components/ui/password-input";
 import { OTPInput } from "../../components/ui/pin-input";
 import { useVaultUnlock } from "../../hooks/useVaultUnlock";
-import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "../../constants/password";
-
 import { useNavigate } from 'react-router';
 import { useAuth } from "../../hooks/useAuth";
 import { logger } from "../../utils/logger";
+import { useProjects } from "../../hooks/useProjects";
+import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "../../constants/password";
+import { LoadSpinner } from "../../components/ui/LoadSpinner";
+import GradientText from "../../components/GradientText/GradientText";
 
 // Define a type for the keys
 type LoadingKeys = 'loading';
@@ -68,7 +71,7 @@ const PWGenerator = () => {
     const [includeUppercase, setIncludeUppercase] = useState<boolean>(true);
     const [includeLowercase, setIncludeLowercase] = useState<boolean>(true);
     const [includeDigits, setIncludeDigits] = useState<boolean>(true);
-    const [includeSymbols, setIncludeSymbols] = useState<boolean>(true);
+    const [includeSymbols, setIncludeSymbols] = useState<boolean>(false);
 
     const [storedPasswords, setStoredPasswords] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
@@ -81,6 +84,10 @@ const PWGenerator = () => {
     // Inline unlock state (only master password input needed, rest comes from hook)
     const [masterPassword, setMasterPassword] = useState("");
     const [totpToken, setTotpToken] = useState("");
+    const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+    const [newVarTags, setNewVarTags] = useState('');
+    const [newVarFolder, setNewVarFolder] = useState('Unassigned');
+    const { projects } = useProjects();
     const [requires2FA, setRequires2FA] = useState(false);
 
     const [loadingData, setLoadingData] = useState<{ [key in LoadingKeys]: boolean }>({
@@ -90,10 +97,28 @@ const PWGenerator = () => {
     const [activeTab, setActiveTab] = useState("history");
     const [pricingLimits, setPricingLimits] = useState<PricingLimitsResponse | null>(null);
 
-    // Fetch pricing limits on auth change
+    const [masterSetupStatus, setMasterSetupStatus] = useState<{ hasMasterSetup: boolean } | null>(null);
+    const [fetchingSetup, setFetchingSetup] = useState(true);
+
+    // Fetch pricing and setup status on auth change
     useEffect(() => {
         if (isAuthenticated) {
-            getPricingLimitsAPI().then(setPricingLimits).catch(logger.error);
+            setFetchingSetup(true);
+            Promise.all([
+                getPricingLimitsAPI(),
+                getMasterPasswordStatusAPI()
+            ]).then(([limits, status]) => {
+                setPricingLimits(limits);
+                setMasterSetupStatus(status);
+                // Auto-enable symbols if user's plan allows it
+                if (limits.canUseSymbols) {
+                    setIncludeSymbols(true);
+                }
+            })
+                .catch(logger.error)
+                .finally(() => setFetchingSetup(false));
+        } else {
+            setFetchingSetup(false);
         }
     }, [isAuthenticated]);
 
@@ -111,12 +136,22 @@ const PWGenerator = () => {
         }));
     };
 
+
+
     const handleGenerate = async () => {
         setLoading('loading', true);
         try {
-            const newPassword = await generatePasswordAPI({
-                includeUppercase, includeLowercase, includeDigits, includeSymbols, length
+            // New Zero-Knowledge Flow:
+            // 1. Authorize with backend (limits/tier)
+            // 2. Generate LOCALLY using CSPRNG
+            const newPassword = await generateSecurePassword({
+                includeUppercase,
+                includeLowercase,
+                includeDigits,
+                includeSymbols,
+                length
             });
+
             setPassword(newPassword);
 
             // Update local generation history (session only)
@@ -124,8 +159,8 @@ const PWGenerator = () => {
             setStoredPasswords(updatedPasswords.slice(0, 50));
 
         } catch (error) {
-            console.error("Cloud generation failed:", error);
-            toaster.create({ title: "Generation failed", type: "error" });
+            console.error("Secure generation failed:", error);
+            toaster.create({ title: "Secure generation failed", type: "error" });
         } finally {
             setLoading('loading', false);
         }
@@ -148,6 +183,9 @@ const PWGenerator = () => {
         setMasterPassword(""); // Reset master password input
         setTotpToken(""); // Reset TOTP token
         setRequires2FA(false); // Reset 2FA requirement
+        setSelectedProjectId('');
+        setNewVarTags('');
+        setNewVarFolder('Unassigned');
         setIsSaveModalOpen(true);
     };
 
@@ -166,7 +204,17 @@ const PWGenerator = () => {
         // If vault is already unlocked, just save directly
         if (hasMasterPassword) {
             try {
-                await saveToVault(keyName, passwordToSave);
+                const project = projects.find(p => p._id === selectedProjectId);
+                const extra = {
+                    projectId: selectedProjectId || undefined,
+                    teamId: project?.teamId,
+                    familyId: project?.familyId,
+                    tags: newVarTags ? newVarTags.split(',').map(t => t.trim()) : [],
+                    folder: newVarFolder || 'Unassigned',
+                    secretType: 'password'
+                };
+
+                await saveToVault(keyName, passwordToSave, extra);
                 setJustSaved(prev => new Set(prev).add(passwordToSave));
                 setIsSaveModalOpen(false);
                 setKeyName("");
@@ -201,8 +249,18 @@ const PWGenerator = () => {
         if (result.success && result.vaultKey) {
             try {
                 // 6. Now save the password using the vault key
+                const project = projects.find(p => p._id === selectedProjectId);
+                const extra = {
+                    projectId: selectedProjectId || undefined,
+                    teamId: project?.teamId,
+                    familyId: project?.familyId,
+                    tags: newVarTags ? newVarTags.split(',').map(t => t.trim()) : [],
+                    folder: newVarFolder || 'Unassigned',
+                    secretType: 'password'
+                };
+
                 const { encryptedData, iv } = await encryptWithKey(passwordToSave, result.vaultKey);
-                await storePasswordAPI(keyName, encryptedData, iv);
+                await storePasswordAPI(keyName, encryptedData, iv, "AES-GCM", extra);
                 refresh();
 
                 setJustSaved(prev => new Set(prev).add(passwordToSave));
@@ -229,7 +287,14 @@ const PWGenerator = () => {
                 }
             }
         } else {
-            if (result.error === 'TwoFactorRequired') {
+            if (result.error === 'TwoFactorDisabled') {
+                toaster.create({
+                    title: "Setup 2FA Required",
+                    description: "You must enable 2FA to modify your vault.",
+                    type: "error"
+                });
+                navigate('/setup-2fa');
+            } else if (result.error === 'TwoFactorRequired') {
                 setRequires2FA(true);
                 toaster.create({
                     title: "2FA Required",
@@ -259,6 +324,13 @@ const PWGenerator = () => {
         item.keyName.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const existingFolders = useMemo(() => {
+        if (!selectedProjectId) {
+            return Array.from(new Set(vaultItems.filter(v => !v.projectId).map(v => v.folder || 'Unassigned')));
+        }
+        return Array.from(new Set(vaultItems.filter(v => v.projectId === selectedProjectId).map(v => v.folder || 'Unassigned')));
+    }, [vaultItems, selectedProjectId]);
+
     const ConfigToggle = ({ label, active, onClick }: { label: string, active: boolean, onClick: () => void }) => (
         <Button
             size="sm"
@@ -283,8 +355,47 @@ const PWGenerator = () => {
         </Button>
     );
 
+    if (isAuthenticated && fetchingSetup) {
+        return <LoadSpinner message="Verifying security status..." />;
+    }
+
+    const showSetupMissing = isAuthenticated && masterSetupStatus && !masterSetupStatus.hasMasterSetup;
+
     return (
         <Box minH="100vh" bg="transparent" pb={20}>
+            {/* Setup Missing Dialog - Non-dismissible if master setup is missing */}
+            <DialogRoot
+                open={!!showSetupMissing}
+                closeOnEscape={false}
+                closeOnInteractOutside={false}
+                placement="center"
+                motionPreset="slide-in-bottom"
+            >
+                <DialogContent bg="bg.panel" border="1px solid" borderColor="brand.500/30" shadow="2xl" p={4} rounded="2xl" backdropFilter="blur(10px)">
+                    <DialogHeader textAlign="center">
+                        <VStack spaceY={2}>
+                            <Box p={3} bg="brand.500/10" rounded="full" color="brand.400">
+                                <LuShieldCheck size={32} />
+                            </Box>
+                            <DialogTitle>
+                                <GradientText colors={["#fff", "#ccc", "#fff"]} showBorder={false} className="text-xl font-bold">
+                                    Security Setup Required
+                                </GradientText>
+                            </DialogTitle>
+                        </VStack>
+                    </DialogHeader>
+                    <DialogBody textAlign="center">
+                        <Text color="fg.muted" fontSize="sm">
+                            To use the generator and secure your vault, you must first set up your master password. This acts as your root key for all encryption.
+                        </Text>
+                    </DialogBody>
+                    <DialogFooter justifyContent="center" pt={4}>
+                        <Button colorPalette="brand" size="lg" w="full" onClick={() => navigate('/setup-master')}>
+                            Complete Setup <LuArrowRight />
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </DialogRoot>
             <Container maxW="2xl" py={{ base: 4, md: 8 }} px={{ base: 4, md: 8 }}>
                 <VStack spaceY={{ base: 6, md: 8 }} align="stretch">
 
@@ -371,12 +482,12 @@ const PWGenerator = () => {
                                             size="xl"
                                             colorPalette="brand"
                                             onClick={handleGenerate}
-                                            disabled={loadingData.loading}
+                                            disabled={loadingData.loading || !pricingLimits}
                                             rounded="xl"
                                             fontWeight="bold"
                                         >
                                             <LuRefreshCw className={loadingData.loading ? "animate-spin" : ""} />
-                                            {loadingData.loading ? "Generating..." : "Generate New Key"}
+                                            {loadingData.loading ? "Generating..." : !pricingLimits ? "Loading Limits..." : "Generate New Key"}
                                         </Button>
                                     </GridItem>
 
@@ -465,7 +576,9 @@ const PWGenerator = () => {
                                                 label="!@#"
                                                 active={includeSymbols}
                                                 onClick={() => {
-                                                    if (pricingLimits && !pricingLimits.canUseSymbols) {
+                                                    // Block interaction while limits are loading
+                                                    if (!pricingLimits) return;
+                                                    if (!pricingLimits.canUseSymbols) {
                                                         toaster.create({
                                                             title: "Pro Feature",
                                                             description: "Advanced symbols are available only on paid plans.",
@@ -477,7 +590,7 @@ const PWGenerator = () => {
                                                     setIncludeSymbols(!includeSymbols);
                                                 }}
                                             />
-                                            {pricingLimits && !pricingLimits.canUseSymbols && (
+                                            {(!pricingLimits || !pricingLimits.canUseSymbols) && (
                                                 <Badge
                                                     position="absolute"
                                                     top="-2"
@@ -487,7 +600,7 @@ const PWGenerator = () => {
                                                     size="xs"
                                                     rounded="full"
                                                 >
-                                                    Pro
+                                                    {!pricingLimits ? '...' : 'Pro'}
                                                 </Badge>
                                             )}
                                         </Box>
@@ -702,6 +815,61 @@ const PWGenerator = () => {
                                 value={keyName}
                                 onChange={(e) => setKeyName(e.target.value)}
                                 autoFocus
+                                bg="bg.surface"
+                                border="1px solid"
+                                borderColor="border.subtle"
+                                _focus={{ borderColor: "brand.400" }}
+                                color="fg.primary"
+                            />
+
+                            <Box w="full">
+                                <HStack mb={2} color="fg.muted">
+                                    <LuLock size={14} />
+                                    <Text fontSize="xs" fontWeight="black" textTransform="uppercase" letterSpacing="widest">Project Assignment</Text>
+                                </HStack>
+                                <NativeSelect.Root size="lg">
+                                    <NativeSelect.Field
+                                        value={selectedProjectId}
+                                        onChange={(e: any) => setSelectedProjectId(e.target.value)}
+                                        bg="bg.surface"
+                                        rounded="xl"
+                                        fontWeight="bold"
+                                    >
+                                        <option value="">Unassigned Project</option>
+                                        {projects.map(p => (
+                                            <option key={p._id} value={p._id}>{p.name}</option>
+                                        ))}
+                                    </NativeSelect.Field>
+                                    <NativeSelect.Indicator />
+                                </NativeSelect.Root>
+                            </Box>
+
+                            <Box w="full">
+                                <HStack mb={2} color="fg.muted">
+                                    <LuFolder size={14} />
+                                    <Text fontSize="xs" fontWeight="black" textTransform="uppercase" letterSpacing="widest">Folder Name</Text>
+                                </HStack>
+                                <Input
+                                    placeholder="e.g. Production, Team Shared"
+                                    value={newVarFolder} // I need to add this state
+                                    onChange={(e) => setNewVarFolder(e.target.value)}
+                                    size="lg"
+                                    rounded="xl"
+                                    bg="bg.surface"
+                                    list="existing-gen-folders"
+                                />
+                                <datalist id="existing-gen-folders">
+                                    {existingFolders.map(f => (
+                                        <option key={f} value={f} />
+                                    ))}
+                                </datalist>
+                            </Box>
+
+
+                            <Input
+                                placeholder="Tags (comma separated, e.g. dev, prod)"
+                                value={newVarTags}
+                                onChange={(e) => setNewVarTags(e.target.value)}
                                 bg="bg.surface"
                                 border="1px solid"
                                 borderColor="border.subtle"

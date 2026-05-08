@@ -4,14 +4,12 @@ import { supabase } from './supabase';
 import { toaster } from '../components/ui/toaster';
 
 const keyvaultServerUrl = import.meta.env.VITE_KEYVAULT_SERVER;
-const serverApiKey = import.meta.env.VITE_SERVER_API;
 
 const axiosInstance = axios.create({
   baseURL: keyvaultServerUrl || 'http://localhost:6251',
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
-    'x-api-key': serverApiKey,
   },
 });
 
@@ -21,10 +19,6 @@ axiosInstance.interceptors.request.use(async (config) => {
 
   if (token) {
     config.headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  if (serverApiKey) {
-    config.headers.set('x-api-key', serverApiKey);
   }
 
   const deviceId = localStorage.getItem('kv_device_id');

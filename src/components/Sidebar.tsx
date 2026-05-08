@@ -1,18 +1,18 @@
 import { Box, VStack, HStack, Text, Button } from '@chakra-ui/react';
 import { NavLink, useNavigate } from 'react-router';
-import { LuLayoutDashboard, LuLock, LuTerminal, LuSettings, LuLogOut, LuUsers, LuShieldCheck } from 'react-icons/lu';
+import { LuLogOut } from 'react-icons/lu';
 import { supabase } from '../utils/supabase';
-import { useState, useEffect } from 'react';
-import { getPricingLimitsAPI, PricingLimitsResponse } from '../api/auth';
-import { logger } from '../utils/logger';
 
 import { useNavigation } from '../hooks/useNavigation';
+import { useVaultContext } from '../context/VaultContext';
 
 const Sidebar = () => {
     const navigate = useNavigate();
     const { sidebarItems } = useNavigation();
+    const { clearSession } = useVaultContext();
 
     const handleLogout = async () => {
+        clearSession();
         await supabase.auth.signOut();
         navigate('/login');
     };

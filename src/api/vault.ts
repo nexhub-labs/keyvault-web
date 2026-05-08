@@ -13,6 +13,8 @@ export interface VaultItem {
     teamId?: string;
     familyId?: string;
     secretType?: string;
+    tags?: string[];
+    folder?: string;
 }
 
 export interface GenerateProps {
@@ -23,6 +25,10 @@ export interface GenerateProps {
     length?: number;
 };
 
+/**
+ * @deprecated Use generateSecurePassword() from utils/password for Zero-Knowledge generation.
+ * This remains for legacy support but triggers a security warning on the backend.
+ */
 export const generatePasswordAPI = async (options: GenerateProps): Promise<string> => {
     const response = await axiosInstance.post('/keyvault/generate', options);
     return response.data.generatedKey;
@@ -37,7 +43,7 @@ export const storePasswordAPI = async (
     encryptedData: string,
     iv: string,
     algorithm: string = 'AES-GCM',
-    extra: { projectId?: string; teamId?: string; familyId?: string; secretType?: string } = {}
+    extra: { projectId?: string; teamId?: string; familyId?: string; secretType?: string; tags?: string[]; folder?: string } = {}
 ): Promise<{ message: string }> => {
     const response = await axiosInstance.post('/keyvault/store', {
         keyName,
@@ -50,7 +56,7 @@ export const storePasswordAPI = async (
 };
 
 export const viewVaultDBAPI = async (filter?: { projectId?: string; teamId?: string; familyId?: string }): Promise<VaultItem[]> => {
-    const response = await axiosInstance.post('/keyvault/viewDB', filter || {});
+    const response = await axiosInstance.get('/keyvault/secrets', { params: filter });
     return response.data;
 };
 
@@ -58,14 +64,36 @@ export const viewVaultDBAPI = async (filter?: { projectId?: string; teamId?: str
  * Retrieves an encrypted password blob from the vault.
  * Decryption must be handled by the client.
  */
-export const retrievePasswordAPI = async (keyName: string): Promise<{ encryptedData: string; iv: string; algorithm: string }> => {
-    const response = await axiosInstance.post('/keyvault/retrieve', { keyName });
+export const retrievePasswordAPI = async (keyName: string, query?: { teamId?: string; familyId?: string }): Promise<{ encryptedData: string; iv: string; algorithm: string }> => {
+    const response = await axiosInstance.get(`/keyvault/secrets/${keyName}`, { params: query });
     return response.data;
 };
 /**
  * Deletes a password from the vault.
  */
-export const deletePasswordAPI = async (keyName: string): Promise<{ message: string }> => {
-    const response = await axiosInstance.post('/keyvault/delete', { keyName });
+export const deletePasswordAPI = async (keyName: string, extra?: { teamId?: string; familyId?: string }): Promise<{ message: string }> => {
+    const response = await axiosInstance.post('/keyvault/delete', { keyName, ...extra });
+    return response.data;
+};
+
+/**
+ * Updates metadata of a vault item without modifying the encrypted payload.
+ */
+export const updateVaultItemAPI = async (
+    keyName: string,
+    updateData: {
+        projectId?: string;
+        tags?: string[];
+        folder?: string;
+        encryptedData?: string;
+        iv?: string;
+    },
+    extra?: { currentTeamId?: string; currentFamilyId?: string }
+): Promise<{ message: string }> => {
+    const response = await axiosInstance.post('/keyvault/update', {
+        keyName,
+        ...updateData,
+        ...extra
+    });
     return response.data;
 };

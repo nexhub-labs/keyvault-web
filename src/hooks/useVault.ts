@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { retrievePasswordAPI, deletePasswordAPI } from '../api/vault';
+import { retrievePasswordAPI, deletePasswordAPI, updateVaultItemAPI } from '../api/vault';
 import { calculateVaultHealth, calculateSecurityLevel } from '../utils/security';
 import { decryptWithKey } from '../utils/crypto';
 import { useVaultContext } from '../context/VaultContext';
@@ -29,16 +29,23 @@ export const useVault = (options: { autoFetch?: boolean } = { autoFetch: true })
      * Retrieves an encrypted password from the vault and decrypts it.
      * Uses the Vault Key (EK) from context (or MEK if legacy).
      */
-    const decryptVaultPassword = async (keyName: string): Promise<string | null> => {
-        // Prioritize Vault Key (Key Indirection), fallback to MEK (Legacy)
-        const keyToUse = contextVaultKey || contextMek;
+    const decryptVaultPassword = async (keyName: string, extra?: { teamId?: string; familyId?: string }): Promise<string | null> => {
+        // Prioritize Context Keys -> Vault Key (Key Indirection) -> MEK (Legacy)
+        let keyToUse = (extra?.teamId && contextVaultKey) ? (useVaultContext().teamKeys[extra.teamId]) :
+            (extra?.familyId && contextVaultKey) ? (useVaultContext().familyKeys[extra.familyId]) :
+                (contextVaultKey || contextMek);
+
+        // Re-deriving for clarity if not found in state
+        if (extra?.teamId) keyToUse = useVaultContext().teamKeys[extra.teamId] || null;
+        else if (extra?.familyId) keyToUse = useVaultContext().familyKeys[extra.familyId] || null;
+        else keyToUse = contextVaultKey || contextMek;
 
         if (!keyToUse) {
             throw new Error("Vault not unlocked");
         }
 
         try {
-            const { encryptedData, iv } = await retrievePasswordAPI(keyName);
+            const { encryptedData, iv } = await retrievePasswordAPI(keyName, extra);
             const decryptedPassword = await decryptWithKey(encryptedData, iv, keyToUse);
             return decryptedPassword;
         } catch (err) {
@@ -50,12 +57,35 @@ export const useVault = (options: { autoFetch?: boolean } = { autoFetch: true })
     /**
      * Deletes a password from the vault.
      */
-    const deleteItem = async (keyName: string) => {
+    const deleteItem = async (keyName: string, extra?: { teamId?: string; familyId?: string }) => {
         try {
-            await deletePasswordAPI(keyName);
+            await deletePasswordAPI(keyName, extra);
             refresh(undefined, true); // Refresh list via Context (Forced)
         } catch (err) {
             logger.error("Failed to delete item", err);
+            throw err;
+        }
+    };
+
+    /**
+     * Updates the metadata of a vault item (e.g., assigning it to a project).
+     */
+    const updateItem = async (
+        keyName: string,
+        updateData: {
+            projectId?: string;
+            tags?: string[];
+            folder?: string;
+            encryptedData?: string;
+            iv?: string;
+        },
+        extra?: { currentTeamId?: string; currentFamilyId?: string }
+    ) => {
+        try {
+            await updateVaultItemAPI(keyName, updateData, extra);
+            refresh(undefined, true); // Refresh list via Context (Forced)
+        } catch (err) {
+            logger.error("Failed to update item metadata", err);
             throw err;
         }
     };
@@ -74,5 +104,5 @@ export const useVault = (options: { autoFetch?: boolean } = { autoFetch: true })
         }
     }, [options.autoFetch, vaultItems.length, loading, hasFetched, refreshVault]);
 
-    return { vaultItems, saveToVault, decryptPassword: decryptVaultPassword, deleteItem, loading, refresh, vaultStats, isUnlocked, hasMasterPassword };
+    return { vaultItems, saveToVault, decryptPassword: decryptVaultPassword, deleteItem, updateItem, loading, refresh, vaultStats, isUnlocked, hasMasterPassword };
 };

@@ -78,6 +78,8 @@ export default function Billing() {
 
     if (loading) return <Box p={10} textAlign="center"><Spinner size="xl" /></Box>;
 
+    const currentTier = limits?.tier || 'free';
+
     return (
         <Container maxW="container.xl" py={8}>
             <VStack spaceY={8} align="stretch">
@@ -92,18 +94,18 @@ export default function Billing() {
                             <VStack align="start" gap={1}>
                                 <Text fontSize="sm" fontWeight="bold" color="fg.muted" letterSpacing="wide">CURRENT PLAN</Text>
                                 <HStack>
-                                    <Heading size="xl" textTransform="capitalize">{limits?.tier || 'Free'} Plan</Heading>
-                                    <Badge colorPalette={limits?.tier === 'free' ? 'gray' : 'green'} variant="solid" size="lg">
-                                        {limits?.tier === 'free' ? 'BASIC' : limits?.tier?.toUpperCase()}
+                                    <Heading size="xl" textTransform="capitalize">{currentTier} Plan</Heading>
+                                    <Badge colorPalette={currentTier === 'free' ? 'gray' : 'green'} variant="solid" size="lg">
+                                        {currentTier === 'free' ? 'BASIC' : currentTier.toUpperCase()}
                                     </Badge>
                                 </HStack>
                                 <Text fontSize="sm" color="fg.muted">
-                                    {limits?.tier === 'free'
-                                        ? `Limited to ${limits?.vaultLimit} vault items`
+                                    {currentTier === 'free'
+                                        ? `Limited to ${limits?.vaultLimit || 50} vault items`
                                         : 'Unlimited vault items & premium features'}
                                 </Text>
                             </VStack>
-                            {limits?.tier !== 'free' ? (
+                            {currentTier !== 'free' ? (
                                 <Button
                                     onClick={handlePortal}
                                     disabled={processing}
@@ -130,7 +132,7 @@ export default function Billing() {
                 </Card.Root>
 
                 <VStack gap={4} align="stretch" w="full">
-                    {limits?.tier === 'free' && (
+                    {currentTier === 'free' && (
                         <Card.Root variant="subtle" size="sm" bg="bg.muted/30" border="1px dashed" borderColor="border.subtle">
                             <Card.Body>
                                 <HStack justify="space-between">

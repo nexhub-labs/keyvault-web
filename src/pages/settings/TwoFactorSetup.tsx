@@ -5,7 +5,6 @@ import {
     HStack,
     Text,
     Button,
-    Input,
     Image,
     Heading,
     Spinner,
@@ -15,20 +14,12 @@ import {
 } from '@chakra-ui/react';
 import { LuShieldCheck, LuCopy, LuTriangle, LuArrowRight, LuUndo, LuDownload } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
-import { setup2FAAPI, activate2FAAPI, deactivate2FAAPI, get2FAStatusAPI, TwoFASetupResponse, getPricingLimitsAPI, PricingLimitsResponse } from '../../api/auth';
-import { useNavigate } from 'react-router';
-import {
-    DialogTitle,
-    DialogCloseTrigger,
-    DialogRoot,
-    DialogContent,
-    DialogHeader,
-    DialogBody,
-    DialogFooter
-} from '../../components/ui/dialog';
+import { setup2FAAPI, activate2FAAPI, get2FAStatusAPI, TwoFASetupResponse } from '../../api/auth';
+import { useVaultContext } from '../../context/VaultContext';
 import { PinInput } from '../../components/ui/pin-input';
 
 const TwoFactorSetup = () => {
+    const { copyToClipboard } = useVaultContext();
     const [isEnabled, setIsEnabled] = useState<boolean>(false);
     const [loading, setLoading] = useState(true);
     const [setupStep, setSetupStep] = useState<'status' | 'setup' | 'backup'>('status');
@@ -36,15 +27,9 @@ const TwoFactorSetup = () => {
     const [token, setToken] = useState('');
     const [backupCodes, setBackupCodes] = useState<string[]>([]);
     const [actionLoading, setActionLoading] = useState(false);
-    const [limits, setLimits] = useState<PricingLimitsResponse | null>(null);
-    const navigate = useNavigate();
-
-    // Deactivation Flow State
-    const [deactivateStep, setDeactivateStep] = useState<'none' | 'confirm' | 'verify'>('none');
 
     useEffect(() => {
         load2FAStatus();
-        getPricingLimitsAPI().then(setLimits).catch(console.error);
     }, []);
 
     const load2FAStatus = async () => {
@@ -60,15 +45,6 @@ const TwoFactorSetup = () => {
     };
 
     const handleStartSetup = async () => {
-        if (limits?.tier === 'free') {
-            toaster.create({
-                title: "2FA Security",
-                description: "Two-factor authentication is available on Individual plans and above.",
-                type: "info",
-                action: { label: "Upgrade", onClick: () => navigate('/pricing') }
-            });
-            return;
-        }
         setActionLoading(true);
         try {
             const data = await setup2FAAPI();
@@ -106,34 +82,9 @@ const TwoFactorSetup = () => {
         }
     };
 
-    const handleDeactivate = async () => {
-        if (!token) {
-            toaster.create({ title: 'Enter a token to deactivate 2FA', type: 'warning' });
-            return;
-        }
-
-        setActionLoading(true);
-        try {
-            await deactivate2FAAPI(token);
-            setIsEnabled(false);
-            setToken('');
-            setDeactivateStep('none'); // Close dialogs
-            toaster.create({ title: '2FA deactivated successfully', type: 'success' });
-        } catch (error) {
-            const err = error as { response?: { data?: { message?: string } } };
-            toaster.create({
-                title: err.response?.data?.message || 'Deactivation failed',
-                type: 'error'
-            });
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
     const handleCopySecret = () => {
         if (setupData?.totpSetupKey) {
-            navigator.clipboard.writeText(setupData.totpSetupKey);
-            toaster.create({ title: 'Secret key copied', type: 'success' });
+            copyToClipboard(setupData.totpSetupKey, "2FA Secret Key");
         }
     };
 
@@ -169,91 +120,21 @@ const TwoFactorSetup = () => {
                         </HStack>
                         <Text fontSize="sm" color="fg.muted">
                             {isEnabled
-                                ? 'Your account is protected with an additional layer of security.'
-                                : 'Protect your vault with a 6-digit code from an authenticator app.'}
+                                ? 'Your account is protected with mandatory 2FA. You can re-enroll if you want to change your device.'
+                                : 'Mandatory: Protect your vault with a 6-digit code from an authenticator app.'}
                         </Text>
                     </VStack>
                     <Button
-                        colorPalette={isEnabled ? 'red' : 'brand'}
-                        variant={isEnabled ? 'subtle' : 'solid'}
-                        onClick={isEnabled ? () => setDeactivateStep('confirm') : handleStartSetup}
+                        colorPalette="brand"
+                        variant="subtle"
+                        onClick={handleStartSetup}
                         size="sm"
                         rounded="xl"
                         disabled={actionLoading}
                     >
-                        {actionLoading ? <Spinner size="sm" /> : (isEnabled ? 'Disable' : 'Enable 2FA')}
+                        {actionLoading ? <Spinner size="sm" /> : (isEnabled ? 'Re-enroll 2FA' : 'Enable 2FA')}
                     </Button>
                 </HStack>
-
-                {/* Dialog 1: Confirmation */}
-                <DialogRoot open={deactivateStep === 'confirm'} onOpenChange={() => setDeactivateStep('none')}>
-                    <DialogContent bg="bg.elevated" border="1px solid" borderColor="border.subtle">
-                        <DialogHeader>
-                            <DialogTitle color="fg.primary">Disable Two-Factor Authentication?</DialogTitle>
-                            <DialogCloseTrigger color="fg.muted" />
-                        </DialogHeader>
-                        <DialogBody>
-                            <Text color="fg.muted" fontSize="sm">
-                                This will remove the extra layer of security from your account. Are you sure you want to proceed?
-                            </Text>
-                        </DialogBody>
-                        <DialogFooter>
-                            <Button variant="subtle" onClick={() => setDeactivateStep('none')}>
-                                Cancel
-                            </Button>
-                            <Button
-                                colorPalette="red"
-                                onClick={() => {
-                                    setDeactivateStep('verify');
-                                    setToken(''); // Reset token for the next step
-                                }}
-                            >
-                                Yes, Disable
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </DialogRoot>
-
-                {/* Dialog 2: Verification Input */}
-                <DialogRoot open={deactivateStep === 'verify'} onOpenChange={() => { if (!actionLoading) setDeactivateStep('none'); }}>
-                    <DialogContent bg="bg.elevated" border="1px solid" borderColor="border.subtle">
-                        <DialogHeader>
-                            <DialogTitle color="fg.primary">Confirm Deactivation</DialogTitle>
-                            <DialogCloseTrigger color="fg.muted" />
-                        </DialogHeader>
-                        <DialogBody>
-                            <VStack align="stretch" spaceY={4}>
-                                <Text color="fg.muted" fontSize="sm">
-                                    Please enter the 6-digit code from your authenticator app to confirm.
-                                </Text>
-                                <Input
-                                    placeholder="000000"
-                                    value={token}
-                                    onChange={(e) => setToken(e.target.value)}
-                                    maxLength={6}
-                                    bg="bg.subtle"
-                                    textAlign="center"
-                                    fontSize="xl"
-                                    letterSpacing="widest"
-                                    rounded="xl"
-                                    autoFocus
-                                />
-                            </VStack>
-                        </DialogBody>
-                        <DialogFooter>
-                            <Button variant="subtle" onClick={() => setDeactivateStep('confirm')} disabled={actionLoading}>
-                                Back
-                            </Button>
-                            <Button
-                                colorPalette="red"
-                                onClick={handleDeactivate}
-                                disabled={token.length !== 6 || actionLoading}
-                            >
-                                {actionLoading ? <Spinner size="sm" /> : 'Confirm & Disable'}
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </DialogRoot>
             </VStack>
         );
     }
@@ -270,7 +151,7 @@ const TwoFactorSetup = () => {
                 </HStack>
 
                 <VStack align="center" spaceY={6} py={4}>
-                    <Box p={4} bg="white" rounded="3xl" shadow="xl">
+                    <Box p={4} bg="white" rounded="3xl" border="1px solid" borderColor="border.subtle">
                         {setupData?.qrCodeUrl && <Image src={setupData.qrCodeUrl} alt="2FA QR Code" boxSize="200px" />}
                     </Box>
 

@@ -67,7 +67,7 @@ describe('getTrustedContactsAPI', () => {
 
 describe('requestRecoveryOTPAPI', () => {
     it('requests OTP and returns expiry info', async () => {
-        const result = await requestRecoveryOTPAPI('recoveryKeyHashValue');
+        const result = await requestRecoveryOTPAPI('test@example.com', 'recoveryKeyHashValue');
 
         expect(result).toHaveProperty('message');
         expect(result).toHaveProperty('expiresIn');
@@ -77,7 +77,7 @@ describe('requestRecoveryOTPAPI', () => {
 
 describe('verifyRecoveryOTPAPI', () => {
     it('verifies OTP and returns salt data', async () => {
-        const result = await verifyRecoveryOTPAPI('recoveryKeyHash', '123456');
+        const result = await verifyRecoveryOTPAPI('test@example.com','recoveryKeyHash', '123456');
 
         expect(result).toHaveProperty('salt');
         expect(result).toHaveProperty('vaultSalt');

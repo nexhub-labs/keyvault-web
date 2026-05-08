@@ -1,24 +1,29 @@
-import { Button, ButtonProps } from "@chakra-ui/react";
+import { Button, ButtonProps, useBreakpointValue, HStack, Spinner } from "@chakra-ui/react";
 import React from "react";
 
 interface AppButtonProps extends Omit<ButtonProps, "variant"> {
     variant?: "primary" | "outline" | "ghost";
-    size?: "sm" | "md" | "lg";
+    size?: "sm" | "md" | "lg" | Record<string, "sm" | "md" | "lg">;
+    loading?: boolean;
+    loadingText?: string;
 }
 
 export const AppButton: React.FC<AppButtonProps> = ({
     variant = "primary",
     size = "md",
     children,
+    loading,
+    loadingText,
     ...props
 }) => {
-    const sizeMap = {
+    const sizeMap: Record<"sm" | "md" | "lg", { h: string, px: string, fontSize: string }> = {
         sm: { h: "34px", px: "14px", fontSize: "0.72rem" },
         md: { h: "42px", px: "20px", fontSize: "0.8rem" },
         lg: { h: "50px", px: "26px", fontSize: "0.88rem" },
     };
 
-    const { h, px, fontSize } = sizeMap[size];
+    const resolvedSize = (typeof size === "object" ? useBreakpointValue(size) : size) || "md";
+    const { h, px, fontSize } = sizeMap[resolvedSize as "sm" | "md" | "lg"];
 
     const base: Partial<ButtonProps> = {
         h,
@@ -92,9 +97,17 @@ export const AppButton: React.FC<AppButtonProps> = ({
         <Button
             {...base}
             {...variantStyles}
+            disabled={loading || props.disabled}
             {...props}
         >
-            {children}
+            {loading ? (
+                <HStack gap={2}>
+                    <Spinner size="xs" color="inherit" />
+                    {loadingText || children}
+                </HStack>
+            ) : (
+                children
+            )}
         </Button>
     );
 };

@@ -8,7 +8,7 @@ import { AppButton } from "../../components/ui/AppButton";
 
 // ─── Motion primitives ────────────────────────────────────────────────────────
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 // ─── Stagger variants ─────────────────────────────────────────────────────────
 

@@ -10,6 +10,7 @@ export interface MasterStatusResponse {
     salt?: string;
     masterPasswordSalt?: string;
     hasPasskeys?: boolean;
+    twoFactorEnabled: boolean;
 }
 
 export interface SetupMasterPayload {
@@ -122,10 +123,19 @@ export const migrateLegacyHashAPI = async (data: MigrateLegacyHashPayload): Prom
 
 /**
  * Requests an OTP to be sent to the user's email for Recovery Key flow.
- * @param recoveryKey - The hex recovery key provided by the user (sent as hash to verify ownership)
+ * @param email - The user's registered email
+ * @param recoveryKeyHash - The hash of the recovery key
  */
-export const requestRecoveryOTPAPI = async (recoveryKeyHash: string): Promise<OTPRequestResponse> => {
-    const response = await axiosInstance.post('/auth/recover/otp', { recoveryKeyHash });
+export const requestRecoveryOTPAPI = async (email: string, recoveryKeyHash: string): Promise<OTPRequestResponse> => {
+    const response = await axiosInstance.post('/auth/recover/otp', { email, recoveryKeyHash });
+    return response.data;
+};
+
+/**
+ * Retrieves the server-issued auth salt for a given email (Two-Phase Auth)
+ */
+export const getAuthSaltAPI = async (email: string): Promise<{ authSalt: string }> => {
+    const response = await axiosInstance.get(`/auth/auth-salt?email=${encodeURIComponent(email)}`);
     return response.data;
 };
 
@@ -133,10 +143,12 @@ export const requestRecoveryOTPAPI = async (recoveryKeyHash: string): Promise<OT
  * Verifies the OTP and returns the Encrypted Master Key.
  */
 export const verifyRecoveryOTPAPI = async (
+    email: string,
     recoveryKeyHash: string,
     otp: string
 ): Promise<VerifyOTPResponse> => {
     const response = await axiosInstance.post('/auth/recover/verify-otp', {
+        email,
         recoveryKeyHash,
         otp
     });
@@ -248,5 +260,20 @@ export const deactivate2FAAPI = async (token: string): Promise<{ message: string
  */
 export const getPricingLimitsAPI = async (): Promise<PricingLimitsResponse> => {
     const response = await axiosInstance.get('/pricing/limits');
+    return response.data;
+};
+/**
+ * Initiates the 2FA reset flow by sending an OTP to the user's email.
+ */
+export const initiate2FAResetOTPAPI = async (): Promise<{ message: string }> => {
+    const response = await axiosInstance.post('/auth/recover/initiate-2fa-reset');
+    return response.data;
+};
+
+/**
+ * Resets 2FA using the Recovery Key hash and the Email OTP token.
+ */
+export const reset2FAWithRecoveryKeyAPI = async (recoveryKeyHash: string, token: string): Promise<{ message: string }> => {
+    const response = await axiosInstance.post('/auth/recover/reset-2fa', { recoveryKeyHash, token });
     return response.data;
 };

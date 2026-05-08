@@ -1,10 +1,11 @@
-import { Box, Heading, Text, VStack, IconButton, HStack, Clipboard, SimpleGrid, Flex, Input, Badge, ClipboardIndicator, Spinner, Center, Button } from '@chakra-ui/react';
+import { Box, Heading, Text, VStack, IconButton, HStack, SimpleGrid, Flex, Input, Badge, Spinner, Center, Button, NativeSelect } from '@chakra-ui/react';
 import { Link } from 'react-router';
-import { LuTrash2, LuCopy, LuEye, LuEyeOff, LuSearch, LuKeyRound, LuCheck, LuRefreshCw } from 'react-icons/lu';
+import { LuTrash2, LuCopy, LuEye, LuEyeOff, LuSearch, LuKeyRound, LuCheck, LuRefreshCw, LuFolder, LuTag, LuPenLine } from 'react-icons/lu';
 import { useState } from 'react';
 import SpotlightCard from '../../components/SpotlightCard/SpotlightCard';
 import { getHeuristicStrength } from '../../utils/security';
 import { toaster } from "../../components/ui/toaster";
+import { useProjects } from '../../hooks/useProjects';
 import {
     DialogActionTrigger,
     DialogBody,
@@ -19,12 +20,13 @@ import {
 // import { logger } from '../../utils/logger';
 
 import { VaultItem } from '../../api/vault';
+import { useVaultContext } from '../../context/VaultContext';
 
 interface FavoritesListProps {
     vaultItems: VaultItem[];
     loading: boolean;
-    decryptPassword: (keyName: string) => Promise<string | null>;
-    deleteItem: (keyName: string) => Promise<void>;
+    decryptPassword: (keyName: string, extra?: { teamId?: string; familyId?: string }) => Promise<string | null>;
+    deleteItem: (keyName: string, extra?: { teamId?: string; familyId?: string }) => Promise<void>;
     refresh: (filter?: { projectId?: string; teamId?: string; familyId?: string } | boolean, force?: boolean) => Promise<void>;
     isUnlocked: boolean;
     maxItems?: number; // Optional limit for Dashboard view
@@ -37,11 +39,33 @@ const FavoritesList = ({ vaultItems, loading, decryptPassword, deleteItem, refre
     const [isDecrypting, setIsDecrypting] = useState<Record<string, boolean>>({});
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [deleteName, setDeleteName] = useState<string>("");
+    const [viewProjectId, setViewProjectId] = useState<string>('all');
+    const { projects, renameProject } = useProjects();
+
+    const [unassignedName, setUnassignedName] = useState<string>(
+        localStorage.getItem('KV_UNASSIGNED_NAME') || 'Unassigned Project'
+    );
+
+    // Rename Modal State
+    const [isRenameOpen, setIsRenameOpen] = useState(false);
+    const [renameProjectId, setRenameProjectId] = useState<string>('');
+    const [renameOldName, setRenameOldName] = useState<string>('');
+    const [renameNewName, setRenameNewName] = useState<string>('');
+    const [isRenaming, setIsRenaming] = useState(false);
+
+    const handleSaveUnassignedName = (newName: string) => {
+        const val = newName.trim() || 'Unassigned Project';
+        localStorage.setItem('KV_UNASSIGNED_NAME', val);
+        setUnassignedName(val);
+    };
+    const { copyToClipboard } = useVaultContext();
+    const [lastCopiedId, setLastCopiedId] = useState<string | null>(null);
 
     const confirmDelete = async () => {
         if (deleteName) {
             try {
-                await deleteItem(deleteName);
+                const item = vaultItems.find(i => i._id === deleteId);
+                await deleteItem(deleteName, { teamId: item?.teamId, familyId: item?.familyId });
                 toaster.create({ title: "Item deleted", type: "success" });
                 setDeleteId(null);
                 setDeleteName("");
@@ -58,11 +82,12 @@ const FavoritesList = ({ vaultItems, loading, decryptPassword, deleteItem, refre
             delete newDecrypted[keyId];
             setDecryptedPasswords(newDecrypted);
         } else {
-            // Decrypt using the MEK already in context (via the hook)
+            // Decrypt using the appropriate key
             setIsDecrypting(prev => ({ ...prev, [keyId]: true }));
 
             try {
-                const password = await decryptPassword(keyName);
+                const item = vaultItems.find(i => i._id === keyId);
+                const password = await decryptPassword(keyName, { teamId: item?.teamId, familyId: item?.familyId });
                 if (password) {
                     setDecryptedPasswords(prev => ({ ...prev, [keyId]: password }));
                 }
@@ -79,13 +104,24 @@ const FavoritesList = ({ vaultItems, loading, decryptPassword, deleteItem, refre
         }
     };
 
+    const handleCopy = (text: string, id: string, label: string) => {
+        copyToClipboard(text, label);
+        setLastCopiedId(id);
+        setTimeout(() => setLastCopiedId(null), 2000);
+    };
+
     const allVaultItems = vaultItems.filter(item =>
         item.secretType === 'password' || item.secretType === 'key' || !item.secretType
     );
 
-    const filteredVault = allVaultItems.filter(item =>
-        item.keyName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredVault = allVaultItems.filter(item => {
+        const matchesSearch = item.keyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            item.tags?.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
+
+        const matchesProject = viewProjectId === 'all' || (viewProjectId === 'unassigned' ? !item.projectId : item.projectId === viewProjectId);
+
+        return matchesSearch && matchesProject;
+    });
 
     const displayedVault = filteredVault.slice(0, displayLimit);
     const hasMore = filteredVault.length > displayLimit;
@@ -156,29 +192,65 @@ const FavoritesList = ({ vaultItems, loading, decryptPassword, deleteItem, refre
                     </IconButton>
                 </HStack>
 
-                <HStack
-                    bg="bg.subtle"
-                    px={4}
-                    py={1.5}
-                    rounded="lg"
-                    borderWidth="1px"
-                    borderColor="border.subtle"
-                    width={{ base: "full", md: "260px" }}
-                    _focusWithin={{ borderColor: "brand.400/50", bg: "bg.elevated", shadow: "0 0 12px var(--chakra-colors-brand-500-20)" }}
-                    transition="all 0.2s"
-                >
-                    <LuSearch color="var(--chakra-colors-fg-muted)" size={18} />
-                    <Input
-                        placeholder="Search keys..."
-                        size="sm"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        _focus={{ outline: "none" }}
-                        bg="transparent"
-                        border="none"
-                        color="fg.primary"
-                        fontWeight="medium"
-                    />
+                <HStack gap={3} width={{ base: "full", md: "auto" }} wrap="wrap">
+                    <NativeSelect.Root size="sm" width="180px">
+                        <NativeSelect.Field
+                            value={viewProjectId}
+                            onChange={(e) => setViewProjectId(e.target.value)}
+                            bg="bg.subtle"
+                            rounded="lg"
+                            fontWeight="bold"
+                        >
+                            <option value="all">All Projects</option>
+                            <option value="unassigned">{unassignedName}</option>
+                            {projects.map(p => (
+                                <option key={p._id} value={p._id}>{p.name}</option>
+                            ))}
+                        </NativeSelect.Field>
+                        <NativeSelect.Indicator />
+                    </NativeSelect.Root>
+
+                    {viewProjectId !== 'all' && (
+                        <IconButton
+                            variant="surface"
+                            size="sm"
+                            aria-label="Rename Project"
+                            onClick={() => {
+                                const pName = viewProjectId === 'unassigned' ? unassignedName : projects.find(p => p._id === viewProjectId)?.name || '';
+                                setRenameProjectId(viewProjectId);
+                                setRenameOldName(pName);
+                                setRenameNewName(pName);
+                                setIsRenameOpen(true);
+                            }}
+                        >
+                            <LuPenLine />
+                        </IconButton>
+                    )}
+
+                    <HStack
+                        bg="bg.subtle"
+                        px={4}
+                        py={1.5}
+                        rounded="lg"
+                        borderWidth="1px"
+                        borderColor="border.subtle"
+                        width={{ base: "full", md: "260px" }}
+                        _focusWithin={{ borderColor: "brand.400/50", bg: "bg.elevated", shadow: "0 0 12px var(--chakra-colors-brand-500-20)" }}
+                        transition="all 0.2s"
+                    >
+                        <LuSearch color="var(--chakra-colors-fg-muted)" size={18} />
+                        <Input
+                            placeholder="Search keys or tags..."
+                            size="sm"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            _focus={{ outline: "none" }}
+                            bg="transparent"
+                            border="none"
+                            color="fg.primary"
+                            fontWeight="medium"
+                        />
+                    </HStack>
                 </HStack>
             </Flex>
 
@@ -217,18 +289,35 @@ const FavoritesList = ({ vaultItems, loading, decryptPassword, deleteItem, refre
                                     <Text fontSize="10px" color="fg.muted" fontWeight="bold" letterSpacing="wider" textTransform="uppercase">
                                         {new Date(item.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                     </Text>
+                                    <HStack gap={1} wrap="wrap" mt={1}>
+                                        <Badge size="xs" variant="outline" colorPalette={item.projectId ? "blue" : "gray"} rounded="full">
+                                            <LuFolder size={10} style={{ marginRight: '4px' }} />
+                                            {item.projectId ? (projects.find(p => p._id === item.projectId)?.name || 'Project') : unassignedName}
+                                        </Badge>
+                                        <Badge size="xs" variant="outline" colorPalette="gray" rounded="full">
+                                            {item.folder || 'Unassigned'}
+                                        </Badge>
+                                        {item.tags?.map(tag => (
+                                            <Badge key={tag} size="xs" variant="surface" colorPalette="gray" rounded="full">
+                                                <LuTag size={10} style={{ marginRight: '4px' }} />
+                                                {tag}
+                                            </Badge>
+                                        ))}
+                                    </HStack>
                                 </VStack>
                                 <HStack spaceX={1}>
                                     {decryptedPasswords[item._id] && (
-                                        <Clipboard.Root value={decryptedPasswords[item._id]} timeout={2000}>
-                                            <Clipboard.Trigger disabled={!isUnlocked} asChild>
-                                                <IconButton variant="subtle" size="xs" rounded="md" aria-label="Copy password" colorPalette="brand">
-                                                    <ClipboardIndicator copied={<LuCheck size={14} />}>
-                                                        <LuCopy size={14} />
-                                                    </ClipboardIndicator>
-                                                </IconButton>
-                                            </Clipboard.Trigger>
-                                        </Clipboard.Root>
+                                        <IconButton
+                                            variant="subtle"
+                                            size="xs"
+                                            rounded="md"
+                                            aria-label="Copy password"
+                                            colorPalette="brand"
+                                            disabled={!isUnlocked}
+                                            onClick={() => handleCopy(decryptedPasswords[item._id], item._id, item.keyName)}
+                                        >
+                                            {lastCopiedId === item._id ? <LuCheck size={14} /> : <LuCopy size={14} />}
+                                        </IconButton>
                                     )}
                                     <IconButton
                                         variant="subtle"
@@ -342,6 +431,61 @@ const FavoritesList = ({ vaultItems, loading, decryptPassword, deleteItem, refre
                     <Text color="fg.muted" mt={4} fontWeight="bold">No records found for "{searchTerm}"</Text>
                 </Center>
             )}
+            <DialogRoot open={isRenameOpen} onOpenChange={(e) => setIsRenameOpen(e.open)}>
+                <DialogContent bg="bg.panel" border="1px solid" borderColor="brand.500/20" rounded="2xl" shadow="2xl">
+                    <DialogHeader>
+                        <DialogTitle color="fg.primary">
+                            {renameProjectId === 'unassigned' ? "Rename Display Label" : "Rename Project"}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <DialogBody>
+                        <VStack spaceY={4} align="stretch">
+                            <Text fontSize="sm" color="fg.muted">
+                                {renameProjectId === 'unassigned'
+                                    ? "Customize how 'Unassigned Project' appears in your dashboard (stored locally)."
+                                    : "Enter a new name for this project."}
+                            </Text>
+                            <Input
+                                placeholder="New name"
+                                value={renameNewName}
+                                onChange={(e) => setRenameNewName(e.target.value)}
+                                bg="bg.surface"
+                                autoFocus
+                            />
+                        </VStack>
+                    </DialogBody>
+                    <DialogFooter>
+                        <DialogActionTrigger asChild>
+                            <Button variant="ghost">Cancel</Button>
+                        </DialogActionTrigger>
+                        <Button
+                            colorPalette="brand"
+                            disabled={isRenaming || !renameNewName.trim() || renameNewName === renameOldName}
+                            onClick={async () => {
+                                setIsRenaming(true);
+                                try {
+                                    if (renameProjectId === 'unassigned') {
+                                        handleSaveUnassignedName(renameNewName);
+                                        toaster.create({ title: "Label updated", type: "success" });
+                                        setIsRenameOpen(false);
+                                    } else {
+                                        await renameProject(renameProjectId, renameNewName);
+                                        toaster.create({ title: "Project renamed", type: "success" });
+                                        setIsRenameOpen(false);
+                                    }
+                                } catch (error) {
+                                    toaster.create({ title: "Rename failed", type: "error" });
+                                } finally {
+                                    setIsRenaming(false);
+                                }
+                            }}
+                        >
+                            {isRenaming ? <Spinner size="sm" /> : "Save"}
+                        </Button>
+                    </DialogFooter>
+                    <DialogCloseTrigger />
+                </DialogContent>
+            </DialogRoot>
         </VStack>
     );
 };

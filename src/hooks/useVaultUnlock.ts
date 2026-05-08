@@ -4,8 +4,9 @@ import {
     deriveMasterPasswordHash, unwrapMasterSeed, deriveMekFromSeed,
     decryptWithKey, importKeyRaw, generateVaultKey, exportKeyRaw, encryptWithKey
 } from '../utils/crypto';
-import { verifyMasterPasswordAPI, getMasterPasswordStatusAPI } from '../api/auth';
+import { verifyMasterPasswordAPI, getMasterPasswordStatusAPI, getAuthSaltAPI } from '../api/auth';
 import { retrievePasswordAPI, storePasswordAPI } from '../api/vault';
+import { supabase } from '../utils/supabase';
 import { logger } from '../utils/logger';
 
 export interface UnlockResult {
@@ -67,17 +68,26 @@ export function useVaultUnlock() {
 
         setIsUnlocking(true);
         try {
-            // 1. Derive MPH for server authentication
-            const mph = await deriveMasterPasswordHash(masterPassword, effectiveSalt);
+            // 1. Fetch user email for Auth Salt
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user || !user.email) {
+                return { success: false, error: "Session expired or invalid" };
+            }
 
-            // 2. Verify MPH against server and get wrapped seed data
+            // 2. Fetch Server-Issued Auth Salt
+            const { authSalt } = await getAuthSaltAPI(user.email);
+
+            // 3. Derive MPH for server authentication using server auth salt
+            const mph = await deriveMasterPasswordHash(masterPassword, authSalt);
+
+            // 4. Verify MPH against server and get wrapped seed data
             const response = await verifyMasterPasswordAPI(mph, totpToken);
 
             if (!response.valid) {
                 return { success: false, error: "Invalid master password" };
             }
 
-            // 3. Unwrap (decrypt) the Master Seed locally
+            // 5. Unwrap (decrypt) the Master Seed locally
             const masterSeed = await unwrapMasterSeed(
                 response.wrappedMasterSeed,
                 response.wrappedMasterSeedIv,
@@ -85,14 +95,14 @@ export function useVaultUnlock() {
                 effectiveSalt
             );
 
-            // 4. Derive MEK from the unwrapped Master Seed
+            // 6. Derive MEK from the unwrapped Master Seed
             const mek = await deriveMekFromSeed(masterSeed, response.vaultSalt);
 
             // Store MEK and salt in context
             setMek(mek);
             setSalt(response.vaultSalt);
 
-            // 5. Unwrap or create the Vault Key
+            // 7. Unwrap or create the Vault Key
             let vaultKey: CryptoKey;
             try {
                 const { encryptedData: ekEnc, iv: ekIv } = await retrievePasswordAPI("__VAULT_KEY__");
@@ -125,11 +135,19 @@ export function useVaultUnlock() {
             };
 
         } catch (error) {
-            const err = error as { response?: { status?: number, data?: { error?: string } }, message?: string };
+            const err = error as { response?: { status?: number, data?: { message?: string, error?: string } }, message?: string };
             logger.error("Unlock failed:", err);
 
             // Check for 2FA requirement
-            if (err.response?.status === 403 && err.response?.data?.error === 'TwoFactorRequired') {
+            if (err.response?.status === 403 && (err.response?.data?.error === 'TwoFactorRequired' || err.response?.data?.message === 'TwoFactorRequired')) {
+                try {
+                    const status = await getMasterPasswordStatusAPI();
+                    if (!status.twoFactorEnabled) {
+                        return { success: false, error: 'TwoFactorDisabled' };
+                    }
+                } catch (e) {
+                    // Ignore and fallback
+                }
                 return {
                     success: false,
                     error: 'TwoFactorRequired'
@@ -138,7 +156,7 @@ export function useVaultUnlock() {
 
             return {
                 success: false,
-                error: err?.message || "Unlock failed"
+                error: err.response?.data?.message || err?.message || "Unlock failed"
             };
         } finally {
             setIsUnlocking(false);

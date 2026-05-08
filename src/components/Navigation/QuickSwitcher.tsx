@@ -52,7 +52,7 @@ const QuickSwitcher = () => {
                             ref={inputRef}
                             autoFocus
                             placeholder="Type to search pages..."
-                            variant="plain"
+                            variant="flushed"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             fontSize="lg"

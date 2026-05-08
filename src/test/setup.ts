@@ -6,7 +6,10 @@ import '@testing-library/jest-dom';
 import { TextDecoder } from 'util';
 
 // Polyfill TextEncoder/TextDecoder for Node.js
-(global as any).TextDecoder = TextDecoder;
+Object.defineProperty(global, 'TextDecoder', {
+    value: TextDecoder,
+    writable: true,
+});
 
 // Simple crypto mock without using jest.fn() (which causes issues in ESM setup)
 const cryptoMock = {
@@ -38,3 +41,23 @@ Object.defineProperty(window, 'crypto', {
     value: cryptoMock,
     writable: true,
 });
+
+// Mock import.meta.env for Vite
+// Note: This requires the test environment to support ES Modules or a transformer that handles import.meta
+interface GlobalWithImportMeta extends Global {
+    importMeta: {
+        env: {
+            VITE_KEYVAULT_SERVER: string;
+            VITE_SUPABASE_URL: string;
+            VITE_SUPABASE_ANON_KEY: string;
+        };
+    };
+}
+
+(global as unknown as GlobalWithImportMeta).importMeta = {
+    env: {
+        VITE_KEYVAULT_SERVER: 'http://localhost:6251',
+        VITE_SUPABASE_URL: 'https://test.supabase.co',
+        VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+    }
+};

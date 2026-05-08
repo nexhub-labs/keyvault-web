@@ -1,7 +1,13 @@
-import secrets from 'secrets.js-grempe';
 import { argon2id } from 'hash-wasm';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
-import axios from 'axios';
+import axiosInstance from './axiosInstance';
+import {
+    splitSecret as shamirSplit,
+    combineShares as shamirCombine,
+    stringToHex as shamirStringToHex,
+    hexToString as shamirHexToString,
+    bytesToHex,
+} from './lib/shamir';
 
 /**
  * Zero-Knowledge Cryptography Utilities
@@ -22,6 +28,10 @@ const RSA_MODULUS_LENGTH = 4096;
 const RSA_PUBLIC_EXPONENT = new Uint8Array([0x01, 0x00, 0x01]); // 65537
 const RSA_HASH = 'SHA-256';
 
+// Stable application-specific PRF evaluation input for passkey-derived keys.
+// Must never change once deployed — changing it invalidates all hardware-wrapped seeds.
+const PRF_EVAL_INPUT = new TextEncoder().encode('keyvault.app/prf-master-seed-v1').slice(0, 32);
+
 /**
  * Generates a cryptographically secure random salt.
  * @param length - Length of the salt in bytes (default 16)
@@ -36,9 +46,12 @@ export function generateSalt(length: number = 16): string {
  * Helper to derive bits using Argon2id.
  */
 async function deriveBitsArgon2(password: string, salt: string, length: number = 32): Promise<Uint8Array> {
+    if (salt.length < 8) {
+        throw new Error('Salt must be at least 8 characters');
+    }
     const hash = await argon2id({
         password,
-        salt: salt.slice(0, 16).padEnd(16, '0'), // Salt must be at least 16 bytes
+        salt,
         iterations: ARGON2_ITERATIONS,
         memorySize: ARGON2_MEMORY,
         parallelism: ARGON2_PARALLELISM,
@@ -102,9 +115,7 @@ export async function deriveExtractableMasterKey(masterPassword: string, salt: s
  * @returns 32-byte hex string (256 bits)
  */
 export function generateMasterSeed(): string {
-    return Array.from(window.crypto.getRandomValues(new Uint8Array(32)))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+    return bytesToHex(window.crypto.getRandomValues(new Uint8Array(32)));
 }
 
 /**
@@ -179,13 +190,23 @@ export async function unwrapMasterSeed(wrappedSeed: string, iv: string, password
  */
 export async function encryptWithKey(
     plainText: string,
-    key: CryptoKey
+    key: CryptoKey,
+    associatedData?: string
 ): Promise<{ encryptedData: string; iv: string }> {
     const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for GCM
     const encodedData = new TextEncoder().encode(plainText);
 
+    const encryptParams: AesGcmParams = {
+        name: ALGORITHM,
+        iv: iv
+    };
+
+    if (associatedData) {
+        encryptParams.additionalData = new TextEncoder().encode(associatedData);
+    }
+
     const encryptedBuffer = await window.crypto.subtle.encrypt(
-        { name: ALGORITHM, iv },
+        encryptParams,
         key,
         encodedData
     );
@@ -206,13 +227,23 @@ export async function encryptWithKey(
 export async function decryptWithKey(
     encryptedData: string,
     iv: string,
-    key: CryptoKey
+    key: CryptoKey,
+    associatedData?: string
 ): Promise<string> {
     const encryptedBuffer = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
     const ivBuffer = Uint8Array.from(atob(iv), c => c.charCodeAt(0));
 
+    const decryptParams: AesGcmParams = {
+        name: ALGORITHM,
+        iv: ivBuffer
+    };
+
+    if (associatedData) {
+        decryptParams.additionalData = new TextEncoder().encode(associatedData);
+    }
+
     const decryptedBuffer = await window.crypto.subtle.decrypt(
-        { name: ALGORITHM, iv: ivBuffer },
+        decryptParams,
         key,
         encryptedBuffer
     );
@@ -424,21 +455,22 @@ export async function unwrapKeyAsymmetric(wrappedKey: string, privateKey: Crypto
 
 /**
  * Generates a high-entropy random recovery key.
- * Format: 32 hex characters (128-bit).
+ * Format: 32 hex characters (128-bit), sourced from window.crypto.getRandomValues.
  */
 export const generateRecoveryKey = (): string => {
-    return secrets.random(128); // 128-bit key in hex
+    // 32 random bytes → 64 hex chars (256 bits of entropy)
+    return bytesToHex(window.crypto.getRandomValues(new Uint8Array(32)));
 };
 
 /**
- * Splits a master key (or any secret) into shards using Shamir's Secret Sharing.
- * @param secret - The secret string to split (must be hex)
- * @param risks - Minimum number of shares required to reconstruct (e.g., 2)
- * @param total - Total number of shares to generate (e.g., 3)
+ * Splits a master key (or any hex secret) into shards using Shamir's Secret Sharing.
+ * @param secret - The secret string to split (must be a valid even-length hex string)
+ * @param risks  - Minimum number of shares required to reconstruct (e.g., 2)
+ * @param total  - Total number of shares to generate (e.g., 3)
  * @returns Array of shares (strings)
  */
 export const splitSecret = (secret: string, risks: number = 2, total: number = 3): string[] => {
-    return secrets.share(secret, total, risks);
+    return shamirSplit(secret, total, risks);
 };
 
 /**
@@ -447,22 +479,24 @@ export const splitSecret = (secret: string, risks: number = 2, total: number = 3
  * @returns The reconstructed secret (hex)
  */
 export const combineShares = (shares: string[]): string => {
-    return secrets.combine(shares);
+    return shamirCombine(shares);
 };
 
 /**
- * Converts a string to hex (needed for secrets.js).
+ * Converts a UTF-8 string to hex.
+ * Useful when you need to pass a non-hex string into splitSecret.
  */
 export const stringToHex = (str: string): string => {
-    return secrets.str2hex(str);
+    return shamirStringToHex(str);
 };
 
 /**
- * Converts hex to string (after reconstruction).
+ * Converts a hex string back to its original UTF-8 string.
  */
 export const hexToString = (hex: string): string => {
-    return secrets.hex2str(hex);
+    return shamirHexToString(hex);
 };
+
 // -----------------------------------------------------------------------------
 // WebAuthn & PRF (Hardware-Locked Keys)
 // -----------------------------------------------------------------------------
@@ -479,21 +513,21 @@ interface PRFExtensionResult {
  * @param masterSeed - The user's Master Seed (hex) to wrap with the hardware key.
  * @param usePrf - Whether to enable the PRF extension (required for Hybrid Unlock).
  */
-export async function registerPasskey(masterSeed?: string, usePrf: boolean = true) {
-    const { data: options } = await axios.get('/auth/passkeys/register-options');
+export async function registerPasskey(masterSeed?: string, usePrf: boolean = true, nickname?: string) {
+    const { data: options } = await axiosInstance.get('/auth/passkeys/register-options');
 
     // Enable PRF extension to derive a seed-wrapping key
     if (usePrf) {
         options.extensions = {
             ...options.extensions,
-            prf: { eval: { first: new Uint8Array(32).fill(1) } }
+            prf: { eval: { first: PRF_EVAL_INPUT } }
         };
     }
 
     const attestationResponse = await startRegistration({ optionsJSON: options });
 
     // registrationData needs to be flexible to include our custom wrapped seed
-    const registrationData: Record<string, unknown> = { ...attestationResponse };
+    const registrationData: Record<string, unknown> = { ...attestationResponse, nickname };
 
     // If we have a Master Seed and PRF output, wrap the seed
     const extensions = attestationResponse.clientExtensionResults;
@@ -502,7 +536,7 @@ export async function registerPasskey(masterSeed?: string, usePrf: boolean = tru
         const prfResult = prf?.results?.first;
         if (prfResult) {
             const hardwareKey = await deriveKeyFromPrf(prfResult);
-            // Encrypt the Master Sseed with the Hardware Key
+            // Encrypt the Master Seed with the Hardware Key
             const { encryptedData, iv } = await encryptWithKey(masterSeed, hardwareKey);
 
             registrationData.hardwareWrappedMasterSeed = encryptedData;
@@ -510,7 +544,7 @@ export async function registerPasskey(masterSeed?: string, usePrf: boolean = tru
         }
     }
 
-    const { data: verification } = await axios.post('/auth/passkeys/verify-registration', registrationData);
+    const { data: verification } = await axiosInstance.post('/auth/passkeys/verify-registration', registrationData);
 
     return verification;
 }
@@ -532,17 +566,17 @@ export async function deriveKeyFromPrf(prfValue: ArrayBuffer): Promise<CryptoKey
  * Authenticates with a Passkey and retrieves PRF internal secret.
  */
 export async function authenticateWithPasskey(usePrf: boolean = true) {
-    const { data: options } = await axios.get('/auth/passkeys/auth-options');
+    const { data: options } = await axiosInstance.get('/auth/passkeys/auth-options');
 
     if (usePrf) {
         options.extensions = {
             ...options.extensions,
-            prf: { eval: { first: new Uint8Array(32).fill(0) } }
+            prf: { eval: { first: PRF_EVAL_INPUT } }
         };
     }
 
     const assertionResponse = await startAuthentication({ optionsJSON: options });
-    const { data: verification } = await axios.post('/auth/passkeys/verify-auth', assertionResponse);
+    const { data: verification } = await axiosInstance.post('/auth/passkeys/verify-auth', assertionResponse);
 
     let prfKey: CryptoKey | null = null;
     const extensions = assertionResponse.clientExtensionResults;

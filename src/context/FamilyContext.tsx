@@ -46,7 +46,6 @@ export const FamilyProvider = ({ children }: { children: ReactNode }) => {
             setFamilies(data);
         } catch (error) {
             logger.error('Failed to fetch families', error);
-            toaster.create({ title: 'Failed to fetch families', type: 'error' });
         } finally {
             setIsLoading(false);
             setHasFetched(true);

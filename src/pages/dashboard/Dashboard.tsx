@@ -3,7 +3,7 @@ import ProfileCard from './ProfileCard';
 import { useAuth } from '../../hooks/useAuth';
 import { useVault } from '../../hooks/useVault';
 import SpotlightCard from '../../components/SpotlightCard/SpotlightCard';
-import { LuShieldCheck, LuLock, LuKey, LuArrowRight, LuTerminal, LuUsers } from 'react-icons/lu';
+import { LuArrowRight } from 'react-icons/lu';
 import { Link } from 'react-router';
 
 import { useNavigation } from '../../hooks/useNavigation';

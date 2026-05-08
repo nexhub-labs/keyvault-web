@@ -1,75 +1,103 @@
-# KeyVault
+<div align="center">
+  <h1>🔐 KeyVault Web Client</h1>
+  <p><strong>The Secure, Zero-Knowledge Interface for Your Digital Vault</strong></p>
 
-**KeyVault** is the ultimate solution for securely generating, storing, and managing your passwords and passkeys. It provides a simple, secure way to keep your login information safe while offering an intuitive interface built with modern web technologies.
+  <p>
+    <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+    <img src="https://img.shields.io/badge/Vite-B73BFE?style=for-the-badge&logo=vite&logoColor=FFD62E" alt="Vite" />
+    <img src="https://img.shields.io/badge/Chakra_UI-319795?style=for-the-badge&logo=chakra-ui&logoColor=white" alt="Chakra UI" />
+    <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" />
+  </p>
+</div>
 
-## Features
+---
 
-- **Secure Password Generation**: Generate strong, random passwords with a single click.
-- **Password Storage**: Store and retrieve your passwords securely.
-- **Passkey Management**: Easily manage and sync your passkeys.
-- **Modern UI**: Built with **React** and **Chakra UI** for a seamless experience.
-- **Dark Mode Support**: Customizable with **next-themes**.
-- **Mobile Responsive**: Optimized for both desktop and mobile devices.
+## 📖 Overview
 
-## Installation
+**KeyVault Web** is the official front-end client for the KeyVault ecosystem. It provides an intuitive, modern interface for generating, securely storing, and managing your sensitive credentials and passkeys.
 
-### Requirements
-- Node.js (v16 or later)
-- npm or yarn
+This client enforces our **Zero-Knowledge Architecture**. It acts as the frontline of your security, ensuring that all encryption and decryption operations happen *locally on your device*. Your master password and derived encryption keys never leave this application.
 
-### Steps
+---
 
-1. Clone this repository:
+## ✨ Features
+
+- 🔒 **Zero-Knowledge by Default:** True end-to-end encryption. The server only ever receives ciphertexts.
+- 🚀 **Next-Gen Authentication:** Seamless, passwordless login flows powered by **Passkeys (WebAuthn)**.
+- 🎨 **Modern SPA Interface:** A highly responsive Single Page Application built with **React** and styled via **Chakra UI** & **TailwindCSS**.
+- 🌓 **Adaptive Theming:** First-class Dark & Light mode support via `next-themes`.
+- 📱 **Mobile-First Design:** Optimized layouts that work flawlessly across desktop, tablet, and mobile browsers.
+
+---
+
+## 🏗️ Secure Client Architecture
+
+The Web Client is exclusively responsible for cryptographic key derivation and data encryption, abstracting the process away from the KeyVault Core API. 
+
+```text
+┌─────────────────────────┐               ┌─────────────────────────┐
+│     KEYVAULT WEB APP    │               │   KEYVAULT CORE API     │
+│                         │               │                         │
+│ 1. Key Derivation       │   Ciphertext  │ 1. Authenticate Request │
+│ 2. Local App Encryption ──┼───────────────┼─► 2. Validate Access    │
+│ 3. Secure Transport     │               │ 3. Store Encrypted Data │
+│                         │               │                         │
+└─────────────────────────┘               └─────────────────────────┘
+```
+
+> **Implementation Note:** All sensitive payloads are pre-encrypted locally within the browser context before reaching the network layer. The server explicitly rejects unencrypted payloads and lacks the mechanisms to derive your master key.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) (v16 or higher)
+- [npm](https://www.npmjs.com/) or [pnpm](https://pnpm.io/)
+
+### Installation
+
+1. **Clone the repository:**
    ```bash
-    git clone https://github.com/alphadevking/keyvault.git
-    ```
-
-2. Navigate into the project directory:
-   ```bash
+   git clone https://github.com/alphadevking/keyvault.git
    cd keyvault
    ```
 
-3. Install dependencies:
+2. **Install dependencies:**
    ```bash
    npm install
    ```
 
-4. Start the development server:
+3. **Start the development server:**
    ```bash
    npm run dev
    ```
 
-5. Open your browser and navigate to `http://localhost:3000`.
-
-## Scripts
-
-- **`dev`**: Starts the development server using **Vite**.
-- **`build`**: Compiles TypeScript and builds the project for production.
-- **`lint`**: Runs **ESLint** to check for code issues.
-- **`preview`**: Previews the production build using **Vite**.
-
-## Technologies
-
-- **React** for the frontend
-- **Chakra UI** for UI components
-- **TailwindCSS** for custom styling
-- **Vite** for fast development and build tool
-- **TypeScript** for type safety
-- **bcryptjs** for hashing passwords securely
-- **PostCSS** and **Autoprefixer** for CSS styling
-
-## License
-
-This project is licensed under the **MIT License**. For full license details, please refer to [LICENSE](LICENSE).
-
-### Why MIT?
-We believe in **"Security through Transparency"**. By open-sourcing our client-side logic under the MIT license, we allow anyone to audit how their sensitive keys are handled, ensuring trust and secondary verification of our Zero-Knowledge architecture.
-
-## Author
-
-- **Nexhub Labs** - [nexhublabs@gmail.com](mailto:nexhublabs@gmail.com)
-- **GitHub**: [alphadevking](https://github.com/alphadevking)
+4. **Access the application:**
+   Open your browser and navigate to `http://localhost:6252`
 
 ---
 
-For more information or contributions, feel free to open an issue or pull request on [GitHub](https://github.com/alphadevking/keyvault).
+## 🛠️ Scripts & Tooling
+
+- **`npm run dev`**: Spin up the lightning-fast development server via Vite.
+- **`npm run build`**: Execute the TypeScript compiler and build the optimized production bundle.
+- **`npm run lint`**: Analyze the codebase with ESLint to maintain high code quality.
+- **`npm run preview`**: Boot a local web server to preview the production build locally.
+
+---
+
+## ⚖️ License
+
+This project is licensed under the **MIT License**. For full details, please refer to the [LICENSE](LICENSE) file.
+
+### Why MIT?
+We believe in **"Security through Transparency."** By open-sourcing our client-side logic under the MIT license, we allow seamless independent audits of our cryptographic implementations, ensuring trust and verification of the Zero-Knowledge architecture.
+
+---
+
+## 👤 Author
+
+**Nexhub Labs**
+- Email: [nexhublabs@gmail.com](mailto:nexhublabs@gmail.com)
+- GitHub: [@alphadevking](https://github.com/alphadevking)

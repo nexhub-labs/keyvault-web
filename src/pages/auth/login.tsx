@@ -20,7 +20,8 @@ import { loginSchema } from '../../schemas/loginSchema';
 import * as yup from 'yup';
 import { useState } from 'react';
 import { supabase } from '../../utils/supabase';
-import { Center, Spinner as LoadSpinner } from '@chakra-ui/react';
+import { LoadSpinner } from '../../components/ui/LoadSpinner';
+
 import { PasswordInput } from '../../components/ui/password-input';
 import SpotlightCard from '../../components/SpotlightCard/SpotlightCard';
 import GradientText from '../../components/GradientText/GradientText';
@@ -43,6 +44,12 @@ const LoginPage = () => {
     // Use the auth hook to check session and redirect if authenticated
     const { isLoading: isCheckingSession } = useAuth({ redirectIfAuthenticated: true });
 
+    // All hooks MUST be called before any early returns (Rules of Hooks)
+    const borderColor = useColorModeValue("gray.200", "border.subtle");
+    const shadowSize = useColorModeValue("xl", "2xl");
+    const bgColor = useColorModeValue("white", "bg.surface");
+    const spotlightColor = useColorModeValue("rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.05)");
+
     const setLoading = (key: string, value: boolean) => {
         setLoadingData((prevState) => ({
             ...prevState,
@@ -54,12 +61,9 @@ const LoginPage = () => {
 
     // Show loading spinner while checking session
     if (isCheckingSession) {
-        return (
-            <Center height="100vh" bg="black">
-                <LoadSpinner size="xl" color="white" />
-            </Center>
-        );
+        return <LoadSpinner message="Verifying session..." />;
     }
+
 
     const onSubmit = async (data: LoginFormData) => {
         setLoading('isSubmitting', true);
@@ -128,11 +132,11 @@ const LoginPage = () => {
                     w="full"
                     rounded="3xl"
                     border="1px solid"
-                    borderColor={useColorModeValue("gray.200", "border.subtle")}
-                    shadow={useColorModeValue("xl", "2xl")}
-                    bg={useColorModeValue("white", "bg.surface")}
+                    borderColor={borderColor}
+                    shadow={shadowSize}
+                    bg={bgColor}
                     backdropFilter="blur(xl)"
-                    spotlightColor={useColorModeValue("rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.05)")}
+                    spotlightColor={spotlightColor}
                 >
                     <Stack spaceY={8} p={8}>
 
