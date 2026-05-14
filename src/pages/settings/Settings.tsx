@@ -181,6 +181,15 @@ const Settings = () => {
     };
 
     const handleSaveContacts = async (data: TrustedContactsFormValues) => {
+        const contacts = data.contacts ?? [];
+        const lowerContacts = contacts.map(c => c.toLowerCase());
+        const userEmail = user?.email?.toLowerCase();
+
+        if (userEmail && lowerContacts.includes(userEmail)) {
+            toaster.create({ title: "You cannot add yourself as a trusted contact", type: "error" });
+            return;
+        }
+
         setContactsLoading(true);
         try {
             // Generate a new recovery key for this setup
@@ -227,15 +236,8 @@ const Settings = () => {
                 errorMessage = err.message;
             }
 
-            // Handle specific validation cases
             if (errorMessage.includes('already set up')) {
                 errorMessage = "Trusted contacts are already configured. Use Manage to update them.";
-            } else if (errorMessage.includes('yourself as a trusted contact')) {
-                errorMessage = "You cannot add yourself as a trusted contact.";
-            } else if (errorMessage.includes('unique email addresses')) {
-                errorMessage = "Trusted contacts must have unique email addresses.";
-            } else if (errorMessage.includes('Exactly 3 trusted contacts')) {
-                errorMessage = "Exactly 3 trusted contacts are required.";
             }
 
             toaster.create({

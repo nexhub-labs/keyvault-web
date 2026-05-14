@@ -74,6 +74,7 @@ const SetupMaster = () => {
     const [contacts, setContacts] = useState(['', '', '']);
     const [masterSeed, setMasterSeed] = useState<string | null>(null);
     const [seedShards, setSeedShards] = useState<string[]>([]);
+    const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
     // Step 4: 2FA Setup
     const [twoFactorStep, setTwoFactorStep] = useState<'setup' | 'backup'>('setup');
@@ -110,6 +111,7 @@ const SetupMaster = () => {
                 toaster.create({ title: "Session error", description: "Please log in again.", type: "error" });
                 return;
             }
+            setCurrentUserEmail(user.email.toLowerCase());
 
             // B. Fetch Server-Issued Auth Salt
             const { authSalt } = await getAuthSaltAPI(user.email);
@@ -185,9 +187,22 @@ const SetupMaster = () => {
     const handleStep3Submit = async () => {
         // Filter out empty contacts and validate remaining ones
         const validContacts = contacts.filter(c => c.trim() && c.includes('@'));
-        
+
         if (validContacts.length !== 3) {
             toaster.create({ title: "Please enter exactly 3 valid email addresses", type: "error" });
+            return;
+        }
+
+        const lowerContacts = validContacts.map(c => c.toLowerCase());
+
+        const uniqueEmails = new Set(lowerContacts);
+        if (uniqueEmails.size !== 3) {
+            toaster.create({ title: "Trusted contacts must have unique email addresses", type: "error" });
+            return;
+        }
+
+        if (currentUserEmail && lowerContacts.includes(currentUserEmail)) {
+            toaster.create({ title: "You cannot add yourself as a trusted contact", type: "error" });
             return;
         }
 
@@ -524,14 +539,14 @@ const SetupMaster = () => {
                                             </Flex>
                                         </Box>
 
-                                        <HStack spaceX={4} w="full">
-                                            <AuthButton variant="outline" onClick={handleDownloadBackupCodes}>
-                                                <LuDownload /> Download .txt
-                                            </AuthButton>
+                                        <VStack w="full" spaceY={3}>
                                             <AuthButton onClick={() => navigate('/dashboard')}>
                                                 Go to Dashboard <LuArrowRight />
                                             </AuthButton>
-                                        </HStack>
+                                            <AuthButton variant="outline" onClick={handleDownloadBackupCodes}>
+                                                <LuDownload /> Download .txt
+                                            </AuthButton>
+                                        </VStack>
                                     </Stack>
                                 )}
                             </SpotlightCard>
