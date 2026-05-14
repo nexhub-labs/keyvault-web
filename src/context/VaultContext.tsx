@@ -43,6 +43,7 @@ export const VaultProvider = ({ children }: { children: ReactNode }) => {
     const wasUnreachable = useRef(false);
 
     const lastRefreshTime = useRef<number>(0);
+    const isLoadingRef = useRef<boolean>(false);
     const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
     const clipboardTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -51,27 +52,28 @@ export const VaultProvider = ({ children }: { children: ReactNode }) => {
 
     const refreshVault = useCallback(async (filter?: { projectId?: string; teamId?: string; familyId?: string }, force: boolean = false) => {
         const now = Date.now();
-        // If not forced (auto-refresh), and last refresh was less than 5 seconds ago, skip to prevent loops
         if (!force && (now - lastRefreshTime.current < 5000)) {
             logger.info("Skipping vault refresh (too soon)");
             return;
         }
 
-        if (isLoading) return;
+        // Use ref to avoid re-creating callback every time isLoading state changes
+        if (isLoadingRef.current) return;
+        isLoadingRef.current = true;
         setIsLoading(true);
         lastRefreshTime.current = now;
 
         try {
             const data = await viewVaultDBAPI(filter);
-            // Filter out internal system entries (keys prefixed with __ are reserved)
             const userItems = data.filter(item => item?.keyName && !item.keyName.startsWith('__'));
             setVaultItems(userItems);
         } catch (err) {
             logger.error("Failed to fetch vault", err);
         } finally {
+            isLoadingRef.current = false;
             setIsLoading(false);
         }
-    }, [isLoading]);
+    }, []);
 
     const refresh = useCallback(async (arg1?: { projectId?: string; teamId?: string; familyId?: string } | boolean, arg2?: boolean) => {
         if (typeof arg1 === 'boolean') {
@@ -130,7 +132,7 @@ export const VaultProvider = ({ children }: { children: ReactNode }) => {
             refreshVault();
         }
         wasUnreachable.current = !isServerReachable;
-    }, [isServerReachable]);
+    }, [isServerReachable, refreshVault]);
 
     const clearSession = () => {
         setMek(null);

@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@10.32.1",
   "author": "Favour Orukpe <nexhublabs@gmail.com>",
   "license": "MIT",
   "scripts": {
@@ -23,7 +24,7 @@
     "@simplewebauthn/types": "^12.0.0",
     "@supabase/supabase-js": "^2.89.0",
     "autoprefixer": "^10.4.20",
-    "axios": "^1.8.2",
+    "axios": "^1.15.2",
     "bcryptjs": "^2.4.3",
     "duratii": "^0.1.0",
     "gsap": "^3.12.5",
@@ -31,7 +32,7 @@
     "immer": "^10.1.1",
     "motion": "^11.17.0",
     "next-themes": "^0.4.4",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-helmet-async": "^2.0.5",
@@ -72,9 +73,10 @@
     "ts-jest": "^29.2.0",
     "typescript": "~5.6.2",
     "typescript-eslint": "^8.18.2",
-    "vite": "^6.4.1"
+    "vite": "^6.4.2"
   },
   "pnpm": {
+    "onlyBuiltDependencies": ["msw"],
     "overrides": {
       "@zag-js/core": "^0.82.2",
       "glob": "^10.5.0",
@@ -85,11 +87,20 @@
       "js-yaml": "^4.1.1",
       "bn.js": "^5.2.3",
       "ajv": "^6.14.0",
-      "brace-expansion": "^2.0.2",
+      "brace-expansion": "^2.0.3",
       "@eslint/plugin-kit": "^0.3.4",
       "qs": "^6.14.2",
       "@tootallnate/once": "^3.0.1",
-      "flatted": ">=3.4.2"
+      "flatted": ">=3.4.2",
+      "handlebars": ">=4.7.9",
+      "follow-redirects": "^1.16.0",
+      "micromatch>picomatch": "^2.3.2",
+      "anymatch>picomatch": "^2.3.2",
+      "jest-util>picomatch": "^4.0.4",
+      "vite>picomatch": "^4.0.4",
+      "cosmiconfig>yaml": "^1.10.3",
+      "vite>yaml": "^2.8.3",
+      "postcss-load-config>yaml": "^2.8.3"
     }
   }
 }

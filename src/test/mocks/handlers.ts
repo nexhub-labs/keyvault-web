@@ -4,7 +4,7 @@
  */
 import { http, HttpResponse } from 'msw';
 
-const baseUrl = 'http://localhost:6251';
+const baseUrl = import.meta.env?.VITE_KEYVAULT_SERVER ?? 'http://localhost:3000';
 
 export const handlers = [
     // ===== Vault Endpoints =====

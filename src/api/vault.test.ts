@@ -41,8 +41,7 @@ describe('storePasswordAPI', () => {
         const result = await storePasswordAPI(
             'my_account',
             'encryptedDataBase64',
-            'ivBase64',
-            'AES-GCM'
+            'ivBase64'
         );
 
         expect(result.message).toContain('my_account');

@@ -6,7 +6,7 @@ import { toaster } from '../components/ui/toaster';
 const keyvaultServerUrl = import.meta.env.VITE_KEYVAULT_SERVER;
 
 const axiosInstance = axios.create({
-  baseURL: keyvaultServerUrl || 'http://localhost:6251',
+  baseURL: keyvaultServerUrl || 'http://localhost:3000',
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',

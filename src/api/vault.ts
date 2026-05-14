@@ -42,14 +42,12 @@ export const storePasswordAPI = async (
     keyName: string,
     encryptedData: string,
     iv: string,
-    algorithm: string = 'AES-GCM',
     extra: { projectId?: string; teamId?: string; familyId?: string; secretType?: string; tags?: string[]; folder?: string } = {}
 ): Promise<{ message: string }> => {
     const response = await axiosInstance.post('/keyvault/store', {
         keyName,
         encryptedData,
         iv,
-        algorithm,
         ...extra
     });
     return response.data;

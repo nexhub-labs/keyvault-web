@@ -9,6 +9,8 @@ export const useVault = (options: { autoFetch?: boolean } = { autoFetch: true })
     const {
         mek: contextMek,
         vaultKey: contextVaultKey,
+        teamKeys,
+        familyKeys,
         isUnlocked,
         vaultItems,
         refreshVault,
@@ -30,15 +32,10 @@ export const useVault = (options: { autoFetch?: boolean } = { autoFetch: true })
      * Uses the Vault Key (EK) from context (or MEK if legacy).
      */
     const decryptVaultPassword = async (keyName: string, extra?: { teamId?: string; familyId?: string }): Promise<string | null> => {
-        // Prioritize Context Keys -> Vault Key (Key Indirection) -> MEK (Legacy)
-        let keyToUse = (extra?.teamId && contextVaultKey) ? (useVaultContext().teamKeys[extra.teamId]) :
-            (extra?.familyId && contextVaultKey) ? (useVaultContext().familyKeys[extra.familyId]) :
-                (contextVaultKey || contextMek);
-
-        // Re-deriving for clarity if not found in state
-        if (extra?.teamId) keyToUse = useVaultContext().teamKeys[extra.teamId] || null;
-        else if (extra?.familyId) keyToUse = useVaultContext().familyKeys[extra.familyId] || null;
-        else keyToUse = contextVaultKey || contextMek;
+        let keyToUse: CryptoKey | null;
+        if (extra?.teamId) keyToUse = teamKeys[extra.teamId] ?? null;
+        else if (extra?.familyId) keyToUse = familyKeys[extra.familyId] ?? null;
+        else keyToUse = contextVaultKey ?? contextMek ?? null;
 
         if (!keyToUse) {
             throw new Error("Vault not unlocked");
